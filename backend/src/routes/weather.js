@@ -47,7 +47,7 @@ function describeCode(code) {
 // ---------------------------------------------------------------------------
 const geocodeCache = new Map();
 const weatherCache = new Map();
-const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+const WEATHER_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - reduce API calls to avoid rate limits
 
 function getCached(map, key, ttl) {
   const entry = map.get(key);
