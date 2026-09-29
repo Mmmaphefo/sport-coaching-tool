@@ -22,11 +22,9 @@ function Layout({ children }) {
     }
   }, [getToken])
 
-  // Players watch live scores from their dashboard instead — the live match
-  // centre is a staff-only logging UI, so the nav item is hidden for them.
-  // Players also get no team-wide pages at all: no Roster, Compare, Tactics
-  // or Sessions. In their place sits "My Stats", which opens their own
-  // profile card (/roster/:id) — the same page the coach sees for them.
+  // Players get read-only access to team pages (Tactics, Compare, Sessions)
+  // so they can study game plans and review performance. Staff-only features
+  // (Roster management, Live match logging) remain hidden.
   const isAthlete = me?.role === 'athlete'
   const athleteId = me?.athleteId ?? null
 
@@ -50,9 +48,9 @@ function Layout({ children }) {
           {navItem('/dashboard', 'Dashboard')}
           {!isAthlete && navItem('/roster', 'Roster')}
           {isAthlete && athleteId && navItem(`/roster/${athleteId}`, 'My Stats')}
-          {!isAthlete && navItem('/compare', 'Compare')}
-          {!isAthlete && navItem('/tactics', 'Tactics')}
-          {!isAthlete && navItem('/sessions', 'Sessions')}
+          {navItem('/compare', 'Compare')}
+          {navItem('/tactics', 'Tactics')}
+          {navItem('/sessions', 'Sessions')}
           {navItem('/events', 'Events')}
           {!isAthlete && navItem('/live', 'Live')}
           {navItem('/settings', 'Settings')}
