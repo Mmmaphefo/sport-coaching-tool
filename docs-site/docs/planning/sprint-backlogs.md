@@ -90,8 +90,9 @@ This page contains the sprint backlogs for Kickstat. Story points follow the sca
 | US50 | Public landing page | Directory of public squads with live events | Kgethie | 3 | Done |
 | UI-01 | Full UI redesign | Navy/blue/volt-lime design system, dark theme, Barlow Condensed | Kgotlelelo | 8 | Done |
 | REM-01 | Remove Pro Fixtures | Drop football-data.org integration (justified in Feature Rationale) | Tasmiya | 2 | Done |
-| BUG-01..10 | Sprint 3 bug list | 10 demo bugs (scheduling, timer, weather, auto-start, visibility…) | Mmaphefo | 8 | 9 Done, 1 In Progress (email env config) |
+| BUG-01..10 | Sprint 3 bug list | 10 demo bugs (scheduling, timer, weather, auto-start, visibility…) | Mmaphefo | 8 | 9 Done|
 |  |  | **Total** |  | **72** |  |
+
 
 ## Sprint 4 — Polish, Bug Fixes & Deployment Prep
 
