@@ -1394,7 +1394,7 @@ router.put('/:id/rsvps/:athleteId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
     const userId = await getOrCreateUserId(pool, clerkUserId);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const event = await loadEventWithAccess(pool, req.params.id, squadId);
     if (!event) {
@@ -1425,6 +1425,9 @@ router.put('/:id/rsvps/:athleteId', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error setting RSVP:', err.message);
     res.status(500).json({ error: 'Server error' });
   }

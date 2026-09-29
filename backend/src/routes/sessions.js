@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { requireAuth, getAuth } = require('../middleware/auth')
 const pool = require('../db')
-const { getOwnedSquadId } = require('./_squad')
+const { getOwnedSquadId, getOwnedSquadIdForStaff } = require('./_squad')
 
 const router = Router()
 
@@ -44,11 +44,12 @@ router.get('/', requireAuth(), async (req, res) => {
   }
 })
 
-// POST /api/sessions — create a new drill
+// POST /api/sessions — create a new drill (staff only; players keep the
+// read-only GET view)
 router.post('/', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req)
-    const squadId = await getOwnedSquadId(pool, clerkUserId)
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId)
     if (!squadId) return res.status(404).json({ error: 'Squad not found' })
 
     const { name, description, tactical_goal, age_group, duration_minutes, equipment, instructions, phase } = req.body
@@ -66,16 +67,19 @@ router.post('/', requireAuth(), async (req, res) => {
     )
     res.status(201).json(result.rows[0])
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message })
+    }
     console.error('POST /api/sessions error:', err)
     res.status(500).json({ error: `Failed to create drill: ${err.message}` })
   }
 })
 
-// PATCH /api/sessions/:id — update a drill
+// PATCH /api/sessions/:id — update a drill (staff only)
 router.patch('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req)
-    const squadId = await getOwnedSquadId(pool, clerkUserId)
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId)
     if (!squadId) return res.status(404).json({ error: 'Squad not found' })
 
     const { name, description, tactical_goal, age_group, duration_minutes, equipment, instructions, phase } = req.body
@@ -97,16 +101,19 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Drill not found' })
     res.json(result.rows[0])
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message })
+    }
     console.error('PATCH /api/sessions/:id error:', err)
     res.status(500).json({ error: `Failed to update drill: ${err.message}` })
   }
 })
 
-// DELETE /api/sessions/:id — delete a drill
+// DELETE /api/sessions/:id — delete a drill (staff only)
 router.delete('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req)
-    const squadId = await getOwnedSquadId(pool, clerkUserId)
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId)
     if (!squadId) return res.status(404).json({ error: 'Squad not found' })
 
     const result = await pool.query(
@@ -116,6 +123,9 @@ router.delete('/:id', requireAuth(), async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Drill not found' })
     res.status(204).end()
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message })
+    }
     console.error('DELETE /api/sessions/:id error:', err)
     res.status(500).json({ error: `Failed to delete drill: ${err.message}` })
   }

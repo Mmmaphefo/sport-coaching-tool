@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId } = require('./_squad');
+const { getOwnedSquadId, getOwnedSquadIdForStaff } = require('./_squad');
 
 const router = express.Router();
 
@@ -28,8 +28,9 @@ router.get('/mine', requireAuth(), async (req, res) => {
   }
 });
 
-// PATCH /api/squads/mine — rename the squad, set gender, mark onboarding complete,
-// and/or toggle public page visibility
+// PATCH /api/squads/mine — rename the squad, set gender, mark onboarding
+// complete, and/or toggle public page visibility. Staff only — players never
+// manage squad settings.
 router.patch('/mine', requireAuth(), async (req, res) => {
   try {
     const { name, gender, onboarded, is_public } = req.body;
@@ -43,7 +44,7 @@ router.patch('/mine', requireAuth(), async (req, res) => {
     }
 
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     // Only relevant when turning public ON. If the squad already has a
     // token (e.g. was public before and got turned off), we keep it so the
