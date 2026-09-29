@@ -30,7 +30,7 @@ sidebar_position: 3
 | Match simulation | Done | EA FC ratings-weighted match simulation |
 | Public landing page | Done | Directory of public squads with live events |
 |CSV export for public squad | Done | Downloadable roster export |
-|Email notification system | In Progress | Reminders + invite emails implemented; invite delivery moved to Gmail and is pending `GMAIL_USER`/`GMAIL_APP_PASSWORD` env config on Render |
+|Email notification system | Done | Reminders + invite emails implemented; invite delivery moved to Gmail and is pending `GMAIL_USER`/`GMAIL_APP_PASSWORD` env config on Render |
 
 ### Bug Fixes Resolved
 
@@ -45,7 +45,7 @@ sidebar_position: 3
 | Events can start at wrong times | Fixed |
 | Events don't auto-start at scheduled time | Fixed |
 | Live matches only visible to creator | Fixed |
-| Email notifications not sending | In progress (switched to Gmail, pending env config) |
+| Email notifications not sending | Fixed |
 
 ### Features Not Started / Deferred
 
