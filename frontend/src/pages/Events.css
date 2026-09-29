@@ -796,3 +796,16 @@
     display: none;
   }
 }
+
+/* Pitch-pin heading above the venue map in the schedule form — same look as
+   the edit form's heading (EventDetail.css). */
+.event-form-map-heading {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 13px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft);
+}
+

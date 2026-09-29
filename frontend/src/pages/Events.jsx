@@ -6,6 +6,7 @@ import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
 import { useConfirm } from '../lib/confirm'
 import WeatherWidget from '../components/WeatherWidget'
+import VenueMapEditor from '../components/VenueMapEditor'
 import './Events.css'
 
 const emptyForm = {
@@ -17,6 +18,8 @@ const emptyForm = {
   event_date: '',
   duration_minutes: '90',
   location: '',
+  lat: null,
+  lng: null,
 }
 
 const statusLabel = {
@@ -166,6 +169,10 @@ function Events() {
       event_date: form.event_date,
       duration_minutes: form.duration_minutes ? Number(form.duration_minutes) : 90,
       location: form.location.trim() || null,
+      // Precise venue pin — sent together, nulls included, exactly like the
+      // edit form so a pin dropped here persists on creation.
+      location_lat: form.lat,
+      location_lng: form.lng,
     }
 
     // Advisory pre-check against the calendar before anything is written
@@ -548,7 +555,18 @@ function Events() {
             </label>
           </div>
 
-          <WeatherWidget location={form.location} compact />
+          <div className="roster-form-wide">
+            <span className="event-form-map-heading">Pitch pin — search the address, use GPS, or click the map</span>
+            <VenueMapEditor
+              latitude={form.lat}
+              longitude={form.lng}
+              label={form.location}
+              onChange={({ lat, lng }) => setForm((f) => ({ ...f, lat, lng }))}
+              onAddress={(address) => setForm((f) => ({ ...f, location: address }))}
+            />
+          </div>
+
+          <WeatherWidget location={form.location} latitude={form.lat} longitude={form.lng} compact />
           <div className="roster-form-actions">
             <button type="button" className="btn btn-ghost" onClick={closeForm}>
               Cancel
