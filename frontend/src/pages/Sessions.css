@@ -43,7 +43,7 @@
   border: 1px solid var(--color-gold);
   border-radius: var(--radius);
   background: var(--color-gold);
-  color: #fff;
+  color: var(--color-ink-fixed);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
@@ -80,7 +80,7 @@
 .sessions-builder-toggle-active {
   border-color: var(--color-gold);
   background: var(--color-gold);
-  color: #fff;
+  color: var(--color-ink-fixed);
 }
 
 .sessions-gen-btn {
@@ -100,7 +100,7 @@
 
 .sessions-gen-btn:hover {
   background: var(--color-gold);
-  color: #fff;
+  color: var(--color-ink-fixed);
 }
 
 /* Filters */
@@ -151,6 +151,12 @@
   font-size: 13px;
   font-weight: 500;
   color: #dc2626;
+}
+
+[data-theme="dark"] .sessions-error {
+  background: rgba(229, 115, 122, 0.12);
+  border-color: rgba(229, 115, 122, 0.4);
+  color: #e5737a;
 }
 
 /* Body layout */
@@ -340,7 +346,7 @@
 
 .sessions-card-btn-add:hover {
   background: var(--color-gold);
-  color: #fff;
+  color: var(--color-ink-fixed);
 }
 
 .sessions-card-added {
@@ -687,7 +693,7 @@
   border: none;
   border-radius: var(--radius);
   background: var(--color-gold);
-  color: #fff;
+  color: var(--color-ink-fixed);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
@@ -734,4 +740,22 @@
   .sessions-field-full {
     grid-column: auto;
   }
+}
+
+/* Dark theme: lift the destructive reds (tuned for light surfaces) so they
+   read clearly on the navy cards and panels. */
+[data-theme="dark"] .sessions-card-btn-del:hover {
+  border-color: #e5737a;
+  color: #e5737a;
+}
+
+[data-theme="dark"] .sessions-plan-remove:hover,
+[data-theme="dark"] .sessions-clear-plan:hover:not(:disabled) {
+  color: #e5737a;
+}
+
+[data-theme="dark"] .sessions-form-error {
+  background: rgba(229, 115, 122, 0.12);
+  border-color: rgba(229, 115, 122, 0.4);
+  color: #e5737a;
 }

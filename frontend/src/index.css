@@ -31,6 +31,10 @@
   --color-sky-soft: rgba(2, 80, 176, 0.1);
   --color-chalk: #f5f4f1;
   --color-line: #e4e1d9;
+  /* Full-bleed page canvas behind cards (Roster/Events/Tactics grey in
+     light mode; the sidebar navy in dark mode so pages blend with the
+     app shell instead of showing a near-black band). */
+  --color-canvas: #eef2f7;
   --shadow-card: 0 1px 2px rgba(20, 20, 20, 0.04), 0 8px 24px rgba(20, 20, 20, 0.07);
   --radius: 10px;
   --radius-sm: 6px;
@@ -47,19 +51,38 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-/* A fixed navy that never swaps with the theme — used for the sidebar
-   and any deliberately-dark accent card, so those stay legible and
-   on-brand in both light and dark mode. */
+/* Theme-invariant colours — these NEVER swap with the theme:
+   - --color-ink-fixed is the brand navy used for the sidebar and any
+     deliberately-dark accent card, so those stay on-brand in both themes.
+   - --color-pitch-fixed is a fixed white for text/borders that sit ON those
+     fixed dark surfaces (sidebar links, credentials panels, accent cards).
+     Using the theme-swapping --color-pitch there would render near-black
+     text on the navy in dark mode. */
 :root {
   --color-ink-fixed: #0B1B33;
+  --color-pitch-fixed: #FFFFFF;
+  /* Fixed brand blue for solid fills that always carry white text (pills,
+     avatars, chips, pitch dots). The theme-swapping --color-blue lifts to a
+     pale blue in dark mode, which would break white-on-blue contrast. */
+  --color-blue-fixed: #0250B0;
 }
 
+/* Dark theme: the base is the sidebar navy (never flat black), cards sit on
+   it with crisper borders and deeper shadows, and chalk steps one tone up
+   for inset wells and toggle tracks. */
 [data-theme="dark"] {
-  --color-pitch: #0F1420;
-  --color-chalk: #1B2434;
-  --color-line: rgba(255, 255, 255, 0.1);
+  --color-pitch: #0B1B33;
+  --color-canvas: #0B1B33;
+  --color-chalk: #182A48;
+  --color-line: rgba(255, 255, 255, 0.12);
   --color-ink: #F2F4F8;
   --color-ink-soft: #A7B0C2;
+  /* Lift the action blue for links/text/borders on navy — the light-mode
+     #0250B0 would sink into the dark canvas. Solid fills switch to
+     --color-blue-fixed instead so their white text keeps its contrast. */
+  --color-blue: #7cb3ef;
+  --color-sky-soft: rgba(124, 179, 239, 0.22);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
 
@@ -146,7 +169,9 @@ button {
 
 .btn-gold {
   background: var(--color-lime);
-  color: var(--color-ink);
+  /* Fixed navy, not theme ink: in dark mode --color-ink flips to
+     near-white, which would sit illegibly on the bright lime. */
+  color: var(--color-ink-fixed);
 }
 
 .btn-gold:hover {
@@ -174,6 +199,18 @@ button {
   background: rgba(179, 59, 59, 0.06);
 }
 
+/* The shared danger red is tuned for light surfaces; lift it in dark mode
+   so it stays clearly readable on the navy. */
+[data-theme="dark"] .btn-danger {
+  color: #e5737a;
+  border-color: rgba(229, 115, 122, 0.45);
+}
+
+[data-theme="dark"] .btn-danger:hover {
+  border-color: #e5737a;
+  background: rgba(229, 115, 122, 0.1);
+}
+
 /* ---------------------------------------------------------------------------
    Shared form & state patterns — used by Roster, Events, LiveMatch,
    Dashboard and Setup. Defined here (not in a page stylesheet) so every
@@ -187,6 +224,12 @@ button {
   border-radius: var(--radius-sm);
   font-size: 14px;
   margin-bottom: 20px;
+}
+
+[data-theme="dark"] .roster-error {
+  background: rgba(229, 115, 122, 0.1);
+  border-color: rgba(229, 115, 122, 0.35);
+  color: #e5737a;
 }
 
 .roster-status {
@@ -223,13 +266,13 @@ button {
 }
 
 .btn-icon-active {
-  background: var(--color-blue);
-  border-color: var(--color-blue);
-  color: var(--color-pitch);
+  background: var(--color-blue-fixed);
+  border-color: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
 }
 
 .btn-icon-active:hover {
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
 }
 
 .roster-form {

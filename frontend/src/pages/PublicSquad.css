@@ -49,7 +49,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 28px;
-  background: linear-gradient(135deg, var(--color-ink) 0%, #10202e 100%);
+  background: linear-gradient(135deg, var(--color-ink-fixed) 0%, #10202e 100%);
   color: #fff;
   border-radius: var(--radius);
   padding: 40px 48px;
@@ -249,7 +249,9 @@
   height: 26px;
   border-radius: 50%;
   background: var(--color-gold);
-  color: #fff;
+  /* Fixed navy on the lime badge — the theme-swapping ink would go
+     near-white in dark mode and vanish against the lime. */
+  color: var(--color-ink-fixed);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
@@ -301,7 +303,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--color-ink);
+  background: var(--color-ink-fixed);
   color: #fff;
   display: flex;
   align-items: center;
@@ -322,4 +324,9 @@
   margin: 3px 0 0;
   font-size: 13px;
   color: var(--color-ink-soft);
+}
+
+/* Dark theme: lift the light-tuned error red for the navy canvas. */
+[data-theme="dark"] .ps-error {
+  color: #e5737a;
 }

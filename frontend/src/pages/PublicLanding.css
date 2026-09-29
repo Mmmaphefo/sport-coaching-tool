@@ -32,7 +32,7 @@
 /* Hero card */
 
 .pl-hero-card {
-  background: linear-gradient(135deg, var(--color-ink) 0%, #10202e 100%);
+  background: linear-gradient(135deg, var(--color-ink-fixed) 0%, #10202e 100%);
   border-radius: var(--radius);
   padding: 32px 36px;
   color: #fff;
@@ -82,7 +82,9 @@
 
 .pl-hero-cta {
   background: var(--color-gold);
-  color: var(--color-ink);
+  /* Fixed navy: the theme-swapping ink goes near-white in dark mode, which
+     is illegible on the lime CTA. */
+  color: var(--color-ink-fixed);
   font-weight: 700;
   text-decoration: none;
   border-radius: var(--radius-sm);
@@ -105,7 +107,7 @@
 
 .pl-live-banner {
   margin-top: 24px;
-  background: linear-gradient(135deg, var(--color-ink) 0%, #10202e 100%);
+  background: linear-gradient(135deg, var(--color-ink-fixed) 0%, #10202e 100%);
   border-radius: var(--radius);
   padding: 24px 32px;
   color: #fff;
@@ -196,7 +198,7 @@
   width: 40px;
   height: 40px;
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--color-pitch);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -245,7 +247,7 @@
   font-family: var(--font-body);
   font-size: 14px;
   min-width: 240px;
-  background: #fff;
+  background: var(--color-pitch);
   color: var(--color-ink);
 }
 
@@ -282,7 +284,7 @@
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: var(--color-ink);
+  background: var(--color-ink-fixed);
   color: #fff;
   display: flex;
   align-items: center;
@@ -303,4 +305,14 @@
   margin: 0;
   font-size: 13px;
   color: var(--color-ink-soft);
+}
+
+/* Dark theme: the white photo wash becomes a navy wash so the landing hero
+   blends with the dark app shell, and the error red is lifted for navy. */
+[data-theme="dark"] .pl-wash {
+  background: linear-gradient(180deg, rgba(11, 27, 51, 0.45) 0%, rgba(11, 27, 51, 0.72) 100%);
+}
+
+[data-theme="dark"] .pl-error {
+  color: #e5737a;
 }

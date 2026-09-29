@@ -7,7 +7,7 @@
   width: 220px;
   flex-shrink: 0;
   background: var(--color-ink-fixed);
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
   display: flex;
   flex-direction: column;
   padding: 24px 18px;
@@ -35,7 +35,7 @@
   letter-spacing: 0.08em;
   font-weight: 700;
   font-size: 15px;
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
 }
 
 .app-nav {
@@ -58,12 +58,12 @@
 }
 
 .nav-link:hover {
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
   text-decoration: none;
 }
 
 .nav-link-active {
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
   border-left-color: var(--color-lime);
   background: rgba(255, 255, 255, 0.06);
 }

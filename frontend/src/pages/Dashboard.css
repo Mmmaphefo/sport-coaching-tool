@@ -88,7 +88,7 @@
   border-left: 5px solid var(--color-lime);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
 }
 
 .dash-live-top {
@@ -690,4 +690,9 @@
 @keyframes dash-fade-scale {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* Dark theme: lift the light-tuned error red for the navy cards. */
+[data-theme="dark"] .dash-invite-error {
+  color: #e5737a;
 }

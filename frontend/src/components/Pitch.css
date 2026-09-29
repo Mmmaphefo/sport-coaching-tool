@@ -113,7 +113,7 @@
 }
 
 .pitch-player-home .pitch-dot {
-  background: var(--color-blue);
+  background: var(--color-blue-fixed);
   color: #ffffff;
 }
 

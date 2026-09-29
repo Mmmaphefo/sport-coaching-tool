@@ -46,7 +46,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #FFFFFF;
+  /* Theme-aware panel: navy in dark mode so the white Clerk card sits on the
+     same navy as the app shell instead of a stark white column. */
+  background: var(--color-pitch);
   padding: 32px;
 }
 
