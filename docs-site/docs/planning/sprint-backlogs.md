@@ -59,7 +59,7 @@ This page contains the sprint backlogs for Kickstat. Story points follow the sca
 | US19 | League/tournament fixtures | Round-robin fixture generation | Mmaphefo | 5 | Done |
 | US20 | Event team join | Other squads join open events | Kgethego | 3 | Done |
 | US26 | Assistant permission boundary | Backend role checks + hide UI controls | Kgethego | 3 | Done |
-| T-01 | Frontend test framework | Vitest + React Testing Library setup | Mmaphefo | 3 | In Progress |
+| T-01 | Frontend test framework | Vitest + React Testing Library setup + CI execution | Mmaphefo | 3 | Done |
 | T-02 | API documentation | OpenAPI spec + Swagger UI | Lindokuhle | 2 | Done |
 | D-01 | Deploy docs site | Docusaurus to Netlify/Cloudflare | Tasmiya | 2 | Done |
 | US29 | Log athlete injury | Injury form, estimator + POST /api/injuries | Kgotlelelo | 3 | Done |
@@ -70,18 +70,28 @@ This page contains the sprint backlogs for Kickstat. Story points follow the sca
 
 ## Sprint 3 — Statistics, Notifications & Advanced Features
 
-**Dates:** 29 April 2026 – 12 May 2026 *(planned)*  
-**Goal:** Deliver athlete statistics, notifications, and league standings.
+**Dates:** 15 September 2026 – 29 September 2026  
+**Goal:** Deliver the remaining rubric gaps from Sprint 2 feedback, fix the top-10 bug list, and ship the advanced coaching features (comparison, tactics, drills, simulation, public pages, availability).
 
-| Story ID | Story | Task | Assignee | SP |
-|---|---|---|---|---|
-| US27 | Athlete stats dashboard | Aggregate goals, cards, appearances | Lindokuhle | 3 |
-| US28 | Season comparisons | Compare stats across events | Kgotlelelo | 3 |
-| US29 | Event notifications | Reminders before events | Kgethego | 3 |
-| US30 | League standings | Standings table from fixtures | Mmaphefo | 3 |
-| US31 | Top scorers chart | Chart of leading goal scorers | Lindokuhle | 2 |
-| US32 | Public squad page | View-only public squad profile | Kgethego | 3 |
-|  |  | **Total** |  | **17** |
+| Story ID | Story | Task | Assignee | SP | Status |
+|---|---|---|---|---|---|
+| US27 | Athlete & squad comparison | Compare endpoint + side-by-side page with BMI | Tasmiya / Lindokuhle | 5 | Done |
+| US28 | Public squad page | Shareable public profile + CSV export | Kgethie | 5 | Done |
+| US29 | Event notifications | Hourly reminder sweep (Resend) + Gmail invite emails | Kgethego | 3 | Done |
+| US41 | RSVP availability | event_rsvps table, athlete self-serve + coach RSVPs, start-live availability gate | Lindo | 5 | Done |
+| US42 | Stat override | Coach-only corrections with audit trail, merged into athlete stats | Lindo | 3 | Done |
+| US43 | Clash detection | Pre-creation and post-creation time-conflict checks | Lindo | 3 | Done |
+| US44 | Venue map editor | Editable OSM pin on events (lat/lng) + weather pin support | Lindo | 3 | Done |
+| US45 | Offline logging | Client-side queue with client_id idempotent replay | Lindo | 5 | Done |
+| US46 | Tactics board | Saved 2D tactics with frames (migration + save fix) | Lindo | 5 | Done |
+| US47 | Sessions / drill library | drills table, auto-generate sessions from tactical goals | Lindo | 3 | Done |
+| US48 | Match simulation | EA FC ratings-weighted 90-minute simulation (events + fixtures) | Lindo | 8 | Done |
+| US49 | Squad gender | Male/female squad gender + matchmaking filter | Kgethie / Mmaphefo | 3 | Done |
+| US50 | Public landing page | Directory of public squads with live events | Kgethie | 3 | Done |
+| UI-01 | Full UI redesign | Navy/blue/volt-lime design system, dark theme, Barlow Condensed | Kgotlelelo | 8 | Done |
+| REM-01 | Remove Pro Fixtures | Drop football-data.org integration (justified in Feature Rationale) | Tasmiya | 2 | Done |
+| BUG-01..10 | Sprint 3 bug list | 10 demo bugs (scheduling, timer, weather, auto-start, visibility…) | Mmaphefo | 8 | 9 Done, 1 In Progress (email env config) |
+|  |  | **Total** |  | **72** |  |
 
 ## Sprint 4 — Polish, Bug Fixes & Deployment Prep
 

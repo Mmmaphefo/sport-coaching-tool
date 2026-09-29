@@ -37,6 +37,25 @@ A full-stack web application for sports coaches and assistants to manage squads,
 - **Assistant**: can log live data and view the roster, but cannot add/edit/delete athletes
 - Assistants are invited by coaches via unique invite links
 
+### Availability & Scheduling Intelligence (Sprint 3)
+- Athletes RSVP to events; matches only start once enough players are available
+- Clash detection warns about scheduling conflicts before and after creation
+- Auto-transition sweep starts events at kickoff and ends them when the duration expires
+- Squad gender (male/female) with matchmaking filters for open leagues
+
+### Coaching Tools (Sprint 3)
+- Athlete & squad comparison page with BMI and form
+- Tactics board with saved frames and the sessions / drill library (auto-generated from tactical goals)
+- Ratings-weighted match simulation (Quick Sim / Simulate Match) for events and fixtures
+- Coach-only stat overrides with an audit trail, merged over derived stats
+- Venue map editor — drop a pin on the pitch and centre the weather widget on it
+- Offline logging queue with idempotent replay for weak-signal pitch-side use
+
+### Public Pages (Sprint 3)
+- Public squad pages and a public landing directory of squads with live events
+- Shareable private links with CSV roster export
+- Email reminders before events and invite emails via Gmail
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -168,30 +187,50 @@ artifacts (`backend-coverage`, `frontend-coverage`) on each CI run.
 
 ## API Endpoints
 
+Interactive API documentation (Swagger UI) is served by the backend at `/api/docs` in non-test environments, generated from [`backend/openapi.yml`](backend/openapi.yml). The table below is a quick reference; the OpenAPI spec is the full contract.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/squads/mine` | Get the logged-in user's squad |
-| PATCH | `/api/squads/mine` | Update squad name |
-| GET | `/api/athletes` | List all athletes in the squad |
-| POST | `/api/athletes` | Add an athlete (coach only) |
-| PATCH | `/api/athletes/:id` | Update an athlete (coach only) |
-| DELETE | `/api/athletes/:id` | Remove an athlete (coach only) |
-| GET | `/api/events` | List events (own + joined + open leagues) |
-| POST | `/api/events` | Create an event or league |
-| GET | `/api/events/:id` | Event detail with timeline and results |
-| PATCH | `/api/events/:id` | Update event (title, status, etc.) |
+| GET | `/api/health` | Health check (no auth) |
+| GET | `/api/me` | Current user ID from JWT |
+| GET / DELETE | `/api/account/me` | Profile / delete account |
+| GET / PATCH | `/api/squads/mine` | Get or update squad (name, gender, public visibility) |
+| GET / POST | `/api/athletes` | List or add athletes |
+| GET | `/api/athletes/:id/stats` | Athlete stats with overrides and injuries |
+| PATCH / DELETE | `/api/athletes/:id/stats/override[/:statKey]` | Coach stat correction / revert |
+| PATCH / DELETE | `/api/athletes/:id` | Update or remove an athlete (coach only) |
+| GET | `/api/compare/athletes?a=&b=` | Side-by-side athlete comparison |
+| GET | `/api/dashboard/summary` | Dashboard summary (readiness, form, leaders) |
+| GET / POST | `/api/events` | List or create events and leagues |
+| GET | `/api/events/clashes` | Pre-creation conflict check |
+| GET / PATCH / DELETE | `/api/events/:id` | Event detail / update / remove |
+| GET | `/api/events/:id/clashes` | Conflict check for an existing event |
+| PATCH | `/api/events/:id/cancel` | Quick-cancel an event |
 | POST | `/api/events/:id/join` | Join an open league/tournament |
-| POST | `/api/events/:id/logs` | Log a live action (US13) |
-| POST | `/api/events/:id/simulate` | Build a ratings-weighted 90-minute script for a live event (Quick Sim / Simulate Match) |
-| PATCH | `/api/events/:id/logs/:logId` | Edit a log entry (US14) |
-| DELETE | `/api/events/:id/logs/:logId` | Undo a log entry (US14) |
-| GET | `/api/fixtures/:id` | Fixture detail with timeline |
-| PATCH | `/api/fixtures/:id` | Update fixture status |
-| POST | `/api/fixtures/:id/logs` | Log a fixture action |
-| PATCH | `/api/fixtures/:id/logs/:logId` | Edit a fixture log entry |
-| DELETE | `/api/fixtures/:id/logs/:logId` | Undo a fixture log entry |
-| POST | `/api/fixtures/:id/simulate` | Build a ratings-weighted 90-minute script for a fixture (home squad only) |
-| POST | `/api/invites` | Create an assistant invite (coach only) |
+| GET | `/api/events/:id/teams` · `/fixtures` · `/standings` · `/stats` | League views |
+| PUT | `/api/events/:id/lineup` | Set starting XI + bench |
+| POST | `/api/events/:id/simulate` | Ratings-weighted 90-minute script (Quick Sim / Simulate Match) |
+| GET / POST | `/api/events/:id/logs` | Read or log live actions (idempotent `client_id` replay) |
+| PATCH / DELETE | `/api/events/:id/logs/:logId` | Edit / undo a log entry |
+| GET | `/api/events/:id/rsvps` | Availability responses |
+| PUT | `/api/events/:id/rsvps/mine` · `/rsvps/:athleteId` | Set availability (athlete / coach) |
+| GET / PATCH | `/api/fixtures/:id` | Fixture detail / update |
+| GET | `/api/fixtures/:id/clashes` | Fixture conflict check |
+| PUT | `/api/fixtures/:id/lineup` | Set both teams' lineups |
+| POST | `/api/fixtures/:id/simulate` | Fixture simulation (home squad only) |
+| GET / POST | `/api/fixtures/:id/logs` | Read or log fixture actions |
+| PATCH / DELETE | `/api/fixtures/:id/logs/:logId` | Edit / undo a fixture log |
+| POST / PATCH / DELETE | `/api/injuries[/:id]` | Log, update, or remove an injury |
+| POST | `/api/invites` | Create an assistant/athlete invite (emailed via Gmail) |
+| POST | `/api/invites/:token/accept` | Accept an invite |
+| GET | `/api/invites/verify/:token` | Public invite verification |
+| GET / POST | `/api/tactics[/:id]` | List/create tactics boards |
+| GET / PATCH / DELETE | `/api/tactics/:id` | Read, update, or delete a tactic |
+| GET / POST | `/api/sessions[/:id]` | Drill library CRUD |
+| GET | `/api/public/squads` · `/api/public/squads/:id` | Public directory and squad pages (no auth) |
+| GET | `/api/public/links/:token[/export.csv]` | Private share link and CSV export (no auth) |
+| GET | `/api/weather?location=` or `?lat=&lng=` | Venue weather forecast |
+| POST | `/webhooks/clerk` | Clerk webhook (user lifecycle) |
 
 ## Deployment
 
@@ -214,11 +253,14 @@ is only needed for out-of-band fixes.
 
 ### Deployment inventory
 
-Third-party services used by the app: **Clerk** (auth), **Resend** (invite/reminder
-emails), **football-data.org** (external fixtures API), **Open-Meteo** (venue
-weather, no key required) and the **EA FC player ratings dataset** (Hugging Face
-datasets-server, no key required — weights the Quick Sim / Simulate Match
-simulation, with a position-based estimate for players it does not know).
+Third-party services used by the app: **Clerk** (auth), **Gmail via nodemailer**
+(invite emails — needs `GMAIL_USER` + `GMAIL_APP_PASSWORD`), **Resend** (event
+reminder emails), **Open-Meteo** (venue weather, no key required) and the
+**EA FC player ratings dataset** (Hugging Face datasets-server, no key required —
+weights the Quick Sim / Simulate Match simulation, with a position-based estimate
+for players it does not know). The football-data.org "Pro Fixtures" integration
+was removed in Sprint 3 — the justification is documented in the docs site's
+Feature Rationale page.
 
 CI auto-deploy is wired through three secrets stored in Gitea
 (Settings → Actions → Secrets — values are never committed to the repo):
@@ -238,7 +280,9 @@ Environment variables configured on the Render service: `DATABASE_URL` (Neon
 direct connection string — pooling **off**, no `-pooler` host, migrations break
 on the pooled URL), `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
 `CLERK_WEBHOOK_SECRET`, `FRONTEND_URL` (= https://kickstat.pages.dev, drives
-CORS), `RESEND_API_KEY`, `EMAIL_FROM`, `FOOTBALL_DATA_API_KEY`.
+CORS), `GMAIL_USER` + `GMAIL_APP_PASSWORD` (invite emails via Gmail — added in
+Sprint 3 when invite delivery moved off Resend), `RESEND_API_KEY`, `EMAIL_FROM`
+(event reminders).
 
 Key deployment files in this repo:
 

@@ -45,6 +45,24 @@ User stories are organised by epic. Each story has a unique ID, description, and
 | US-I1 | CI/CD pipeline | developer | have automated lint/test on every push | regressions are caught early | 3 |
 | US-I2 | Public documentation site | stakeholder | read product and technical docs | I can understand and evaluate the project | 5 |
 
+## E5 · Statistics, Availability & Advanced Coaching (Sprint 3)
+
+| ID | Story | As a... | I want to... | So that... | SP |
+|---|---|---|---|---|---|
+| US27 | Athlete & squad comparison | coach | compare two athletes side by side (stats, BMI, form) | I can pick the stronger lineup | 5 |
+| US28 | Public squad page | coach | share a read-only squad page (and CSV export) via link | parents and supporters can follow results | 5 |
+| US29 | Event notifications | coach | receive reminders before events and invite emails | nobody misses a match or training | 3 |
+| US41 | RSVP availability | athlete | mark myself available/unavailable per event | the coach only starts a match with enough players | 5 |
+| US42 | Stat override | coach | correct a derived stat with a note | the record stays accurate when the log is wrong | 3 |
+| US43 | Clash detection | coach | be warned about scheduling conflicts | my squads never double-book a venue or team | 3 |
+| US44 | Venue map editor | coach | drop a pin on a map for the venue | everyone navigates to the exact pitch | 3 |
+| US45 | Offline logging | coach/assistant | queue log entries with no signal and replay them | nothing is lost on a weak connection | 5 |
+| US46 | Tactics board | coach | draw and save tactics boards | I can rehearse set pieces with the squad | 5 |
+| US47 | Sessions / drill library | coach | auto-generate training drills from tactical goals | sessions match what we need to work on | 3 |
+| US48 | Match simulation | coach | simulate a match from player ratings | I can demo the app or pre-fill realistic stats | 8 |
+| US49 | Squad gender | coach | set my squad's gender and filter matchmaking | female squads aren't drawn against male squads | 3 |
+| US50 | Public landing page | visitor | browse public squads and their live events | the community can follow local teams | 3 |
+
 ## Story Point Scale
 
 | Points | Meaning |

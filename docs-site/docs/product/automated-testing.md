@@ -35,17 +35,23 @@ local development database.
 The integration suite covers the main backend workflows, including:
 
 - account creation, roles, invite acceptance, and account deletion;
-- squad ownership and assistant permission boundaries;
-- roster creation, editing, removal, and athlete statistics;
+- squad ownership, squad gender, public visibility, and assistant permission boundaries;
+- roster creation, editing, removal, athlete statistics, and coach stat overrides (US42);
 - event creation, editing, cancellation, live logging, result calculation,
   and undo behaviour;
+- event start guards: past-date rejection, lineup-gated starts, and the
+  auto-transition sweep (US6, US13);
 - league fixtures, standings, and top-scorer aggregation;
+- starting-XI and bench management for events and fixtures;
+- RSVP availability and the start-live availability gate (US41);
+- pre-creation and post-creation clash detection (US43);
+- public squad pages, private links, and CSV export (US28/US50);
+- offline-queue replay idempotency via `client_id` (US45);
 - injury logging, return-to-play estimates, coach overrides, and roster flags (US29–US31);
 - cancelled event and fixture logging being rejected (US6);
 - ratings-driven match simulation: dataset lookup, caching, positional estimates,
-  and the script both simulation endpoints return;
-- event reminder email scheduling;
-- external football-data API response normalisation and error handling; and
+  and the script both simulation endpoints return (US48);
+- event reminder email scheduling (US29); and
 - venue weather lookup behaviour.
 
 The user-story-to-test mapping is maintained in the
@@ -62,18 +68,25 @@ backend/tests/integration/
 | File | Main coverage area |
 |---|---|
 | `account.integration.test.js` | Account profile and deletion |
-| `athletes.integration.test.js` | Athlete summary statistics |
+| `athletes.integration.test.js` | Athlete summary statistics and stat overrides (US42) |
 | `auth-and-roles.integration.test.js` | Authentication-related roles, invites, and access control |
-| `events.integration.test.js` | Live event logging and league events |
-| `external.integration.test.js` | Football-data API integration |
-| `fixtures.integration.test.js` | Fixture detail, live logging, and permissions |
-| `invites.integration.test.js` | Assistant and athlete invitations |
+| `event-start-guards.integration.test.js` | Past-date rejection, lineup-gated starts, anchored `started_at` |
+| `events.integration.test.js` | Live event logging, league events, gender filter |
+| `fixtures.integration.test.js` | Fixture detail, live logging, simulation, and permissions |
 | `injuries.integration.test.js` | Injury logging, estimates, overrides, and roster flags (US29–US31) |
+| `invites.integration.test.js` | Assistant and athlete invitations |
+| `lineups.integration.test.js` | Starting XI and bench management for events and fixtures |
+| `match-availability.integration.test.js` | RSVPs, the start-live availability gate (US41), clash detection (US43) |
+| `missing-features.integration.test.js` | Public pages (US28/US50), offline replay idempotency (US45) |
 | `reminders.integration.test.js` | Event reminder email scheduling |
 | `roster-and-events-basic.integration.test.js` | Roster and basic event management |
-| `simulation.integration.test.js` | Player ratings lookup and the match simulation endpoints |
-| `squad.integration.test.js` | Squad and user self-healing helpers |
+| `simulation.integration.test.js` | Player ratings lookup and the match simulation endpoints (US48) |
+| `squad.integration.test.js` | Squad creation, gender, public visibility |
 | `weather.integration.test.js` | Weather integration |
+
+Plus `backend/tests/migrations.test.js`, which verifies migration integrity. The
+Pro Fixtures (football-data.org) integration and its test suite were removed in
+Sprint 3 — see [Feature Rationale](./feature-rationale.md).
 
 ## Run tests locally
 
@@ -122,8 +135,15 @@ production database, before running it.
 Frontend component tests live next to the components they test:
 
 ```text
-frontend/src/**/__tests__/ and *.test.jsx files
+frontend/src/**/*.test.jsx and frontend/src/**/*.test.js
 ```
+
+19 test files cover the pages (Dashboard, Roster, Events, EventDetail, LiveMatch,
+AthleteStats, AccountSettings, InviteAccept, PublicLanding, PublicSquad,
+Welcome), the shared components (Layout, ProtectedRoute, ConfirmProvider, Pitch,
+VenueMapEditor), and the lib modules (`api`, `lineups`, `simulation`). The
+suite runs with a raised `testTimeout` in `vitest.config.js` because jsdom
+rendering of the data-heavy pages exceeds the 5 s default on slower machines.
 
 The simulation feature is covered on the frontend too:
 `frontend/src/lib/simulation.test.js` covers mapping the script onto log bodies
@@ -143,8 +163,10 @@ backend/coverage/index.html
 Open this file in a browser to inspect coverage by folder and source file. The
 report also prints a summary in the terminal.
 
-The latest verified local baseline is **57 passing integration tests** with
-**76.39% statement coverage**.
+The current baseline is **145 backend integration tests** (statement coverage
+above 75%) plus **123 frontend component tests** (about 63% line coverage on
+the 2026-09-28 local run). Both suites run on every push — the live numbers
+are on the coverage dashboard linked below.
 
 ## Live coverage dashboard
 

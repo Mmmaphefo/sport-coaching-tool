@@ -30,7 +30,7 @@ sidebar_position: 3
 | Match simulation | Done | EA FC ratings-weighted match simulation |
 | Public landing page | Done | Directory of public squads with live events |
 |CSV export for public squad | Done | Downloadable roster export |
-|Email notification system | Done | Verification when assistant is invited|
+|Email notification system | In Progress | Reminders + invite emails implemented; invite delivery moved to Gmail and is pending `GMAIL_USER`/`GMAIL_APP_PASSWORD` env config on Render |
 
 ### Bug Fixes Resolved
 
@@ -105,9 +105,9 @@ sidebar_position: 3
 
 ### Test Results
 
-- **Backend:** 17 integration test suites passing
-- **Frontend:** 51+ individual tests passing
-- **CI:** All tests run on every push via Gitea Actions (lint + build + test)
+- **Backend:** 17 integration test suites passing — 145 individual tests, statement coverage above 75%
+- **Frontend:** 19 test files passing — 123 individual tests, about 63% line coverage
+- **CI:** All tests run on every push via Gitea Actions (lint + build + test + coverage for both codebases), with reports on the coverage dashboard and Codecov
 
 ---
 
@@ -147,7 +147,7 @@ sidebar_position: 3
 | Core features complete | 95% |
 | Bug fixes resolved | 9/10 |
 | UI redesign | 100% |
-| Tests passing | 51+ |
+| Tests passing | 268 (145 backend + 123 frontend) |
 | Documentation | In progress |
 
 ### Key Achievements

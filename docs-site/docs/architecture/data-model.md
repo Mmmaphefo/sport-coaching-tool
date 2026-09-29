@@ -34,6 +34,14 @@ erDiagram
   SQUADS ||--o{ INVITES : "invites into"
   USERS ||--o{ INVITES : sends
   ATHLETES ||--o| INVITES : "links existing roster row"
+  EVENTS ||--o{ EVENT_RSVPS : "availability"
+  ATHLETES ||--o{ EVENT_RSVPS : responds
+  USERS ||--o{ EVENT_RSVPS : "responds as"
+  ATHLETES ||--o{ ATHLETE_STAT_OVERRIDES : "corrected by"
+  EVENTS ||--o{ MATCH_LINEUPS : fields
+  FIXTURES ||--o{ MATCH_LINEUPS : fields
+  SQUADS ||--o{ TACTICS : draws
+  SQUADS ||--o{ DRILLS : owns
 
   USERS {
     serial id PK
@@ -47,6 +55,9 @@ erDiagram
     varchar name
     integer min_roster_size
     boolean onboarded
+    varchar gender "male or female"
+    boolean is_public
+    varchar public_token UK "share link"
   }
   ATHLETES {
     serial id PK
@@ -56,15 +67,25 @@ erDiagram
     integer squad_number
     date date_of_birth
     integer user_id FK "set once athlete accepts invite"
+    text photo "data-URL profile photo"
+    boolean is_managed
+    integer height_cm
+    integer weight_kg
+    varchar tactical_tags
+    text coach_notes
   }
   EVENTS {
     serial id PK
     integer squad_id FK
     varchar event_type "match or training"
-    varchar format "match or league"
+    varchar format "match, training, league or tournament"
     varchar status "scheduled, live, completed, cancelled"
     timestamp event_date
+    integer duration_minutes
+    timestamp started_at "anchored when the match goes live"
     integer required_teams
+    double location_lat "venue pin"
+    double location_lng
     integer created_by FK
   }
   EVENT_TEAMS {
@@ -91,7 +112,52 @@ erDiagram
     integer value
     integer minute
     integer logged_by FK
+    varchar client_id UK "offline-queue idempotency"
+    integer related_log_id FK "linked assist/substitution"
     timestamp deleted_at "soft delete = undo"
+  }
+  EVENT_RSVPS {
+    serial id PK
+    integer event_id FK
+    integer athlete_id FK
+    varchar status "pending, available, unavailable, maybe"
+    text note
+    integer responded_by FK
+    timestamp responded_at
+  }
+  ATHLETE_STAT_OVERRIDES {
+    serial id PK
+    integer athlete_id FK
+    varchar stat_key
+    integer override_value
+    text note
+    integer set_by FK
+  }
+  MATCH_LINEUPS {
+    serial id PK
+    integer fixture_id FK "exactly one of fixture/event"
+    integer event_id FK
+    integer athlete_id FK
+    varchar team_side "home or away"
+    smallint pos_x "0-100, null while benched"
+    smallint pos_y
+    boolean is_starter
+  }
+  TACTICS {
+    serial id PK
+    integer squad_id FK
+    varchar name
+    text description
+    jsonb frames "board frames"
+  }
+  DRILLS {
+    serial id PK
+    integer squad_id FK
+    varchar name
+    varchar tactical_goal
+    varchar age_group
+    integer duration_minutes
+    varchar phase
   }
   INJURIES {
     serial id PK
@@ -175,6 +241,12 @@ PostgreSQL was chosen over alternatives (MongoDB, SQLite) because:
 | `injuries.return_date` is an estimate, not a verdict | The estimator derives a range from sports-medicine reference tables and stores the midpoint with its basis (`estimation_basis`). Coaches can override it (US30) — the stored value is always what the coach last confirmed. |
 | `injuries.cleared_at` for early clearance | Recovery often beats the estimate. Setting `cleared_at` keeps the injury history for the athlete's record while dropping the active-injury flag. |
 | `player_ratings` is keyed by a normalised name, not `athletes.id` | Ratings come from an external dataset keyed by player name, and one lookup serves every squad. Caching by name means the external API is only ever asked for a name it has not answered before, and renaming an athlete does not throw the rating away. |
+| `event_rsvps` has one row per athlete per event | The unique `(event_id, athlete_id)` constraint makes an RSVP an upsert — re-responding updates the row instead of stacking duplicates, and the availability gate counts from this single source. |
+| `athlete_stat_overrides` upserts per `(athlete_id, stat_key)` | A correction replaces the previous one for that stat, so the audit trail shows the *current* correction with its note rather than a stack of stale values. Derived stats stay untouched — overrides are merged over them on read. |
+| `match_lineups` rows belong to exactly one of a fixture or an event | The `(fixture_id IS NOT NULL) != (event_id IS NOT NULL)` check lets one table serve both simple events (home side only) and fixtures (both sides). |
+| `log_entries.client_id` has a partial unique index | Offline replay: a queued entry resent after a lost response hits the same `client_id` and returns the original row instead of duplicating it. Only non-null values are constrained, so legacy rows are unaffected. |
+| `squads.public_token` + `is_public` power the public pages | The token is an unguessable share key for private links; `is_public` opts the squad into the public directory. Both are indexed/unique lookups with no auth context. |
+| `squads.gender` is a hard CHECK (`male`/`female`) | Gender drives matchmaking filters; a database constraint (not just API validation) guarantees a squad always has a valid gender for the join-time filter. |
 
 ## Tables
 
@@ -195,6 +267,11 @@ PostgreSQL was chosen over alternatives (MongoDB, SQLite) because:
 | `id` | serial, PK | |
 | `coach_id` | integer, not null, references `users`, `ON DELETE CASCADE` | **Unique** — a coach owns exactly one squad |
 | `name` | varchar | Defaults to `'My Squad'` on self-heal creation |
+| `onboarded` | boolean, not null, default `false` | Set when the coach finishes first-login setup |
+| `min_roster_size` | integer | Minimum available RSVPs required to start a match (defaults to 11) |
+| `gender` | varchar(10), not null, default `'male'` | CHECK `'male'` or `'female'` — drives matchmaking filters |
+| `is_public` | boolean, not null, default `false` | Opts the squad into the public landing directory |
+| `public_token` | varchar(64), unique | Unguessable key for private share links |
 | `created_at` | timestamp | |
 
 ### `athletes`
@@ -208,6 +285,13 @@ PostgreSQL was chosen over alternatives (MongoDB, SQLite) because:
 | `squad_number` | integer | |
 | `date_of_birth` | date | |
 | `contact_info` | varchar(255) | |
+| `email` | varchar(255) | Athlete invite address |
+| `user_id` | integer, references `users` | Set once the athlete accepts their invite and can log in |
+| `is_managed` | boolean, not null, default `false` | Managed (regular) vs rested status |
+| `photo` | text | Client-downscaled data-URL profile photo (hosted disk is ephemeral) |
+| `height_cm` / `weight_kg` | integer | Drive the BMI display on the profile and comparison pages |
+| `tactical_tags` | varchar(255) | Free-text tactical labels (U39) |
+| `coach_notes` | text | Free-text coach notes (U39) |
 | `created_at` / `updated_at` | timestamp | |
 
 ### `events`
@@ -219,10 +303,14 @@ PostgreSQL was chosen over alternatives (MongoDB, SQLite) because:
 | `title` | varchar(150) | Free-text title (calendar-form events) |
 | `opponent` | varchar(100) | Set for matches |
 | `event_type` | varchar(20), not null, default `'match'` | `'match'` or `'training'` |
+| `format` | varchar(20), not null, default `'match'` | `'match'`, `'training'`, `'league'` or `'tournament'` — leagues/tournaments carry teams and fixtures |
 | `event_date` | timestamp, not null | |
 | `location` | varchar(255) | |
+| `location_lat` / `location_lng` | double precision | Venue pin set by the map editor; takes precedence over geocoding the place name |
 | `duration_minutes` | integer, not null, default `90` | Used by the auto-transition sweep |
+| `started_at` | timestamp | Anchored the first time the event goes live so the timer and completion checks don't drift |
 | `status` | varchar(20), not null, default `'scheduled'` | `'scheduled'` → `'live'` → `'completed'`, or `'cancelled'` |
+| `required_teams` | integer | League/tournament only — fixtures generate once this many teams have joined |
 | `created_by` | integer, not null, references `users` | |
 | `created_at` / `updated_at` | timestamp | |
 
@@ -244,6 +332,9 @@ The core of live event tracking — one row per logged action.
 | `logged_at` | timestamp, not null, default `now()` | |
 | `updated_at` | timestamp | |
 | `deleted_at` | timestamp | **Soft delete** — set on "undo"; the row is kept for audit history but excluded from live views |
+| `fixture_id` | integer, references `fixtures`, `ON DELETE CASCADE` | Set for fixture logs (mutually exclusive with a simple event row) |
+| `related_log_id` | integer, references `log_entries` | Links derivative entries (assists, substitutions) to the primary log row |
+| `client_id` | varchar(64), unique where not null | Client-generated id from the offline queue — replayed requests return the original row instead of duplicating |
 
 ### `injuries`
 
@@ -275,6 +366,91 @@ Roster availability tracking (US29–US31). One row per logged injury.
 | `status` | varchar(20), not null, default `'pending'` | `'pending'` or `'accepted'` |
 | `created_at` | timestamp | |
 
+### `event_rsvps`
+
+Athlete availability per event (US41). One row per athlete per event; the
+availability gate that blocks "Start live" reads its counts from here.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | serial, PK | |
+| `event_id` | integer, not null, references `events`, `ON DELETE CASCADE` | |
+| `athlete_id` | integer, not null, references `athletes`, `ON DELETE CASCADE` | |
+| `status` | varchar(20), not null, default `'pending'` | CHECK `'pending'`, `'available'`, `'unavailable'`, `'maybe'` |
+| `note` | text | Free-text excuse/comment from the responder |
+| `responded_by` | integer, references `users` | The athlete user (or coach responding on their behalf) |
+| `responded_at` | timestamp | When the current status was set |
+| `created_at` / `updated_at` | timestamp | |
+
+Unique on (`event_id`, `athlete_id`) — re-responding updates the row.
+
+### `athlete_stat_overrides`
+
+Coach-only corrections over derived stats (US42). Merged over the computed
+values on read; the derived numbers themselves are never rewritten.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | serial, PK | |
+| `athlete_id` | integer, not null, references `athletes`, `ON DELETE CASCADE` | |
+| `stat_key` | varchar(40), not null | e.g. `'goals'`, `'assists'`, `'penalties'`, `'yellowCards'`, `'redCards'`, `'appearances'` |
+| `override_value` | integer, not null | The corrected number |
+| `note` | text | Why the correction was made (audit trail) |
+| `set_by` | integer, not null, references `users` | Coach who set the override |
+| `created_at` / `updated_at` | timestamp | |
+
+Unique on (`athlete_id`, `stat_key`) — a new correction replaces the old one.
+
+### `match_lineups`
+
+Starting XIs and benches captured before live logging can begin. Exactly one
+of `fixture_id` / `event_id` is set (CHECK constraint); simple events only
+ever carry the home side.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | serial, PK | |
+| `fixture_id` | integer, references `fixtures`, `ON DELETE CASCADE` | Set for league fixtures |
+| `event_id` | integer, references `events`, `ON DELETE CASCADE` | Set for simple events |
+| `athlete_id` | integer, not null, references `athletes`, `ON DELETE CASCADE` | |
+| `team_side` | varchar(8), not null | CHECK `'home'` or `'away'` |
+| `pos_x` / `pos_y` | smallint | Drag-and-drop pitch position as percentages (0-100); `null` while benched |
+| `is_starter` | boolean, not null, default `true` | Starters can be substituted; benched players can only be booked |
+| `created_at` / `updated_at` | timestamp | |
+
+### `tactics`
+
+Saved tactics boards (US46). Frames are opaque JSON — the board owns the
+shape; the API stores and returns them as-is.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | serial, PK | |
+| `squad_id` | integer, not null, references `squads`, `ON DELETE CASCADE` | |
+| `name` | varchar(100), not null | |
+| `description` | text | |
+| `frames` | jsonb, not null, default `'[]'` | Board frames (player positions, arrows, drawings) |
+| `created_at` / `updated_at` | timestamp | |
+
+### `drills`
+
+The sessions / drill library (US47). Seeded with starter drills per squad;
+coaches filter by tactical goal, age group and phase.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | serial, PK | |
+| `squad_id` | integer, not null, references `squads`, `ON DELETE CASCADE` | |
+| `name` | varchar(100), not null | |
+| `description` | text | |
+| `tactical_goal` | varchar(30), not null | e.g. possession, pressing, transition |
+| `age_group` | varchar(20), not null, default `'First Team'` | |
+| `duration_minutes` | integer | |
+| `equipment` | text | |
+| `instructions` | text | |
+| `phase` | varchar(30) | Training phase tag added in Sprint 3 |
+| `created_at` / `updated_at` | timestamp | |
+
 ### `player_ratings`
 
 Cache of EA FC-style player ratings used by the match simulator. Keyed by a
@@ -300,13 +476,32 @@ users ──┐
         ├─(coach_id, unique)── squads ──(squad_id)── athletes
         │                         │
         │                         ├─(squad_id)── events ──(event_id)── log_entries
-        │                         │                                        │
-        │                         └─(squad_id)── invites                   │
-        │                                                                  │
-        └──(squad_id, nullable, ON DELETE SET NULL)                        │
-        └──(created_by / logged_by / invited_by, on events/log_entries/invites)
-                                                        athletes ──(athlete_id, ON DELETE SET NULL)┘
+        │                         │                    │                    │
+        │                         │                    ├─(event_id)── event_rsvps
+        │                         │                    ├─(event_id)── match_lineups ─┐
+        │                         │                    └─(event_id)── fixtures ──────┤
+        │                         │                                        │         │
+        │                         │                              (fixture_id)───────┘
+        │                         ├─(squad_id)── tactics
+        │                         ├─(squad_id)── drills
+        │                         └─(squad_id)── invites
+        │
+        └──(squad_id, nullable, ON DELETE SET NULL)
+        └──(created_by / logged_by / invited_by / responded_by / set_by)
+
+athletes ──(athlete_id)── event_rsvps ─┐
+        └──(athlete_id)── match_lineups │
+        └──(athlete_id, ON DELETE CASCADE)── athlete_stat_overrides
+log_entries ──(related_log_id, self-FK)── log_entries
 ```
+
+Notes on the Sprint 3 tables:
+- `match_lineups` rows attach to **either** an event or a fixture (exactly one,
+  enforced by a CHECK constraint) — drawn joined to both above.
+- `athlete_stat_overrides` and `event_rsvps` cascade with their athlete; an
+  override's `set_by` and an RSVP's `responded_by` both reference `users`.
+- `log_entries.client_id` is a partial unique index (unique only where not
+  null), so it is a constraint rather than a relationship.
 
 `player_ratings` is intentionally absent from this diagram — it references no
 other table, because a rating belongs to a player *name* rather than to one

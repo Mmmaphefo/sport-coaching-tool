@@ -13,10 +13,10 @@ sidebar_position: 6
 
 ## Coverage targets
 
-| Layer | Target | Current |
+| Layer | Target | Current (2026-09-28) |
 |-------|--------|---------|
-| Backend (statement coverage) | ≥ 75% | 76.39% |
-| Frontend (component coverage) | ≥ 1 test per page/component | In progress |
+| Backend (statement coverage) | ≥ 75% | ≥ 75% — see the [coverage dashboard](https://kickstat-coverage.netlify.app) / Codecov for the live number |
+| Frontend (line coverage) | ≥ 60% | ~63% on the latest local run; both suites run in CI on every push |
 
 Coverage is measured using Vitest's built-in coverage reporter (`@vitest/coverage-v8`).
 
@@ -32,3 +32,4 @@ Coverage is measured using Vitest's built-in coverage reporter (`@vitest/coverag
 backend/tests/integration/   — Backend API tests
 frontend/src/pages/          — Frontend component tests (co-located)
 frontend/src/components/     — Frontend component tests (co-located)
+```

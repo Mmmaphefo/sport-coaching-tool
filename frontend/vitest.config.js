@@ -13,6 +13,10 @@ export default defineConfig({
     },
     globals: true,
     setupFiles: './src/test-setup.js',
+    // The data-heavy pages (LiveMatch, EventDetail, Dashboard...) exceed the
+    // 5s default on slower machines — CI already raised individual timeouts,
+    // so raise the global default to keep local runs deterministic.
+    testTimeout: 15000,
     coverage: {
       provider: 'v8',
       // json-summary produces coverage-summary.json, which the CI coverage

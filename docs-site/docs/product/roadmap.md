@@ -68,16 +68,35 @@ The project is delivered in four sprints, each with a clear goal and set of user
 
 ## Sprint 3 — Statistics, Notifications & Advanced Features
 
-**Dates:** 15 September 2026 – 29 September 2026 *(planned)*
+**Dates:** 15 September 2026 – 29 September 2026
 
-**Goal:** Deliver athlete statistics, notifications, and league standings.
+**Goal:** Close the Sprint 2 rubric gaps, fix the demo bug list, and deliver the advanced coaching feature set.
 
-**Planned Features:**
-- Athlete stats dashboard (goals, cards, appearances)
-- Season-level comparisons
-- In-app notifications for event reminders
-- Staff dashboard for facility/trade management
-- Listing filters and stock management
+**User Stories:**
+- US27 — Athlete & squad comparison
+- US28 — Public squad page (+ CSV export)
+- US29 — Event notifications (reminders + invite emails)
+- US41 — RSVP availability with start-live gate
+- US42 — Coach stat override with audit trail
+- US43 — Clash detection
+- US44 — Venue map editor
+- US45 — Offline logging queue
+- US46 — Tactics board
+- US47 — Sessions / drill library
+- US48 — Ratings-weighted match simulation
+- US49 — Squad gender & matchmaking filter
+- US50 — Public landing page
+
+**Deliverables:**
+- 9/10 demo bugs fixed (email delivery pending Gmail env config on Render)
+- Full UI redesign with a unified design system
+- Pro Fixtures (football-data.org) removed — justification in Feature Rationale
+- 145 backend + 123 frontend automated tests, all running in CI with coverage
+
+**Metrics:**
+- 268 automated tests passing across both codebases
+- Backend coverage above 75%, frontend coverage above 60% (line coverage)
+- Core features 95% complete
 
 ## Sprint 4 — Polish, Bug Fixes & Deployment Prep
 
