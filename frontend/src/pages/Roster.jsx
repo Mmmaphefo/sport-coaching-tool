@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
@@ -154,6 +154,7 @@ function Roster() {
   const [statsById, setStatsById] = useState({})
   const [squadName, setSquadName] = useState('')
   const [role, setRole] = useState(null)
+  const [athleteId, setAthleteId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(false)
@@ -183,6 +184,7 @@ function Roster() {
     try {
       const me = await apiRequest('/api/account/me', { getToken })
       setRole(me.role)
+      setAthleteId(me.athleteId ?? null)
     } catch {
       setRole('coach')
     }
@@ -475,6 +477,12 @@ function Roster() {
     } finally {
       setInviteSending(false)
     }
+  }
+
+  // Players never see the team roster — they land on their own profile card
+  // instead, the same page the coach opens for them (/roster/:id).
+  if (role === 'athlete') {
+    return <Navigate to={athleteId ? `/roster/${athleteId}` : '/dashboard'} replace />
   }
 
   return (

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, Navigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
@@ -422,6 +422,7 @@ function AthleteStats() {
 
   const [data, setData] = useState(null)
   const [role, setRole] = useState(null)
+  const [athleteId, setAthleteId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [period, setPeriod] = useState('season')
@@ -470,6 +471,7 @@ function AthleteStats() {
     try {
       const me = await apiRequest('/api/account/me', { getToken })
       setRole(me.role)
+      setAthleteId(me.athleteId ?? null)
     } catch {
       setRole('coach')
     }
@@ -541,6 +543,14 @@ function AthleteStats() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  // Players only ever open their own card — the "My Stats" nav item links to
+  // /roster/:id for them. Any other id bounces to their own profile, and an
+  // account that isn't linked to an athlete row goes back to the dashboard.
+  if (role === 'athlete') {
+    if (!athleteId) return <Navigate to="/dashboard" replace />
+    if (String(athleteId) !== String(id)) return <Navigate to={`/roster/${athleteId}`} replace />
   }
 
   if (loading) {

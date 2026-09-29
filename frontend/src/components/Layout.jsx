@@ -8,13 +8,13 @@ import './Layout.css'
 function Layout({ children }) {
   const location = useLocation()
   const { getToken } = useAuth()
-  const [role, setRole] = useState(null)
+  const [me, setMe] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     apiRequest('/api/account/me', { getToken })
-      .then((me) => {
-        if (!cancelled) setRole(me.role)
+      .then((account) => {
+        if (!cancelled) setMe(account)
       })
       .catch(() => {})
     return () => {
@@ -24,7 +24,11 @@ function Layout({ children }) {
 
   // Players watch live scores from their dashboard instead — the live match
   // centre is a staff-only logging UI, so the nav item is hidden for them.
-  const isAthlete = role === 'athlete'
+  // Players also get no team-wide pages at all: no Roster, Compare, Tactics
+  // or Sessions. In their place sits "My Stats", which opens their own
+  // profile card (/roster/:id) — the same page the coach sees for them.
+  const isAthlete = me?.role === 'athlete'
+  const athleteId = me?.athleteId ?? null
 
   const navItem = (to, label) => {
     const isActive = location.pathname === to || location.pathname.startsWith(`${to}/`)
@@ -44,10 +48,11 @@ function Layout({ children }) {
         </div>
         <nav className="app-nav">
           {navItem('/dashboard', 'Dashboard')}
-          {navItem('/roster', 'Roster')}
-          {navItem('/compare', 'Compare')}
-          {navItem('/tactics', 'Tactics')}
-          {navItem('/sessions', 'Sessions')}
+          {!isAthlete && navItem('/roster', 'Roster')}
+          {isAthlete && athleteId && navItem(`/roster/${athleteId}`, 'My Stats')}
+          {!isAthlete && navItem('/compare', 'Compare')}
+          {!isAthlete && navItem('/tactics', 'Tactics')}
+          {!isAthlete && navItem('/sessions', 'Sessions')}
           {navItem('/events', 'Events')}
           {!isAthlete && navItem('/live', 'Live')}
           {navItem('/settings', 'Settings')}
