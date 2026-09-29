@@ -1,6 +1,6 @@
 /* ---- Page shell (light matchday-grey canvas behind the cards) ---- */
 .roster-page {
-  background: #eef2f7;
+  background: var(--color-canvas);
   margin: -40px -48px;
   padding: 40px 48px;
   min-height: 100vh;
@@ -196,7 +196,7 @@
 .ros-filter-active,
 .ros-filter-active:hover {
   background: var(--color-ink-fixed);
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
 }
 
 /* ---- Athlete cards ---- */
@@ -258,18 +258,18 @@
 }
 
 .ros-card-pill-ready {
-  background: var(--color-blue);
-  color: var(--color-pitch);
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
 }
 
 .ros-card-pill-managed {
   background: var(--color-lime);
-  color: var(--color-ink);
+  color: var(--color-ink-fixed);
 }
 
 .ros-card-pill-injured {
   background: #b33b3b;
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
 }
 
 /* Wrapper keeps the avatar's footprint identical whether initials or a
@@ -290,8 +290,8 @@
   width: 88px;
   height: 88px;
   border-radius: 50%;
-  background: var(--color-blue);
-  color: var(--color-pitch);
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
   font-family: var(--font-display);
   font-size: 28px;
   font-weight: 700;
@@ -322,15 +322,15 @@
   border-radius: 50%;
   background: var(--color-lime);
   color: var(--color-ink-fixed);
-  border: 2px solid var(--color-pitch);
+  border: 2px solid var(--color-pitch-fixed);
   box-shadow: 0 2px 8px rgba(var(--color-ink-rgb), 0.28);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .ros-photo-btn:hover {
-  background: var(--color-blue);
-  color: var(--color-pitch);
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
   transform: scale(1.06);
 }
 
@@ -424,6 +424,193 @@
   padding: 0 26px 20px;
 }
 
+/* ---- Player account status + invite (coach only) ---- */
+.ros-account {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 26px 0;
+  border-top: 1px solid var(--color-line);
+  margin-top: 0;
+}
+
+.ros-account-chip {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--color-ink-rgb), 0.08);
+  color: var(--color-ink-soft);
+}
+
+.ros-account-chip-joined {
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
+}
+
+.ros-account-chip-invited {
+  background: var(--color-lime);
+  color: var(--color-ink-fixed);
+}
+
+.ros-invite-btn {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 12px;
+}
+
+.ros-account-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.ros-account-form input {
+  flex: 1;
+  min-width: 200px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+  color: var(--color-ink);
+}
+
+.ros-account-form input:focus {
+  outline: none;
+  border-color: var(--color-sky);
+  box-shadow: 0 0 0 3px var(--color-sky-soft);
+}
+
+.ros-account-error {
+  width: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: #b33b3b;
+}
+
+/* Credentials panel — dark card, so the fixed ink token keeps it readable
+   in dark theme too. */
+.ros-credentials-wrap {
+  margin: 12px 26px 20px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--color-ink-fixed);
+}
+
+.ros-credentials {
+  background: var(--color-ink-fixed);
+  color: var(--color-pitch-fixed);
+  padding: 16px 18px;
+}
+
+.ros-credentials-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-lime);
+  margin: 0 0 6px;
+}
+
+.ros-credentials-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 12px;
+}
+
+.ros-cred-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.ros-cred-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.ros-cred-value {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-pitch-fixed);
+  word-break: break-all;
+  flex: 1;
+}
+
+.ros-copy-btn {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: var(--color-pitch-fixed);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ros-copy-btn:hover {
+  background: var(--color-lime);
+  border-color: var(--color-lime);
+  color: var(--color-ink-fixed);
+}
+
+.ros-credentials-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 12px 0 0;
+}
+
+.ros-credentials-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 18px 14px;
+  background: var(--color-ink-fixed);
+}
+
+/* btn-ghost's ink text/border would vanish on the dark surface in light
+   theme — keep the buttons readable on the credentials panel. */
+.ros-credentials-actions .btn-ghost {
+  color: var(--color-pitch-fixed);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ros-credentials-actions .btn-ghost:hover {
+  border-color: var(--color-lime);
+}
+
+/* Inside the light add-athlete confirmation, the credentials panel needs its
+   own surface — reuse the same block but with padding handled by the wrap. */
+.roster-added-confirmation .ros-credentials {
+  margin: 12px 0 4px;
+  border-radius: var(--radius);
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 980px) {
   .ros-grid {
@@ -470,4 +657,38 @@
   .ros-card-actions {
     padding: 0 18px 18px;
   }
+
+  .ros-account {
+    padding: 12px 18px 0;
+  }
+
+  .ros-credentials-wrap {
+    margin: 12px 18px 18px;
+  }
+}
+
+/* Dark theme: ghost numbers, availability tracks and status chips switch to
+   white tints so they stay visible on the navy cards. */
+[data-theme="dark"] .ros-card-ghost {
+  color: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="dark"] .ros-card-bar {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .ros-card-bar-injured {
+  background: #e5737a;
+}
+
+[data-theme="dark"] .ros-card-pill-injured {
+  background: #c05050;
+}
+
+[data-theme="dark"] .ros-account-chip {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .ros-account-error {
+  color: #e5737a;
 }

@@ -140,4 +140,57 @@ describe('Events', () => {
       expect(screen.getByRole('button', { name: /Calendar view/i }).getAttribute('aria-pressed')).toBe('true')
     })
   })
+
+  it('hides staff actions and shows own RSVP badges for athletes', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      if (path === '/api/events') {
+        return Promise.resolve([
+          {
+            id: 1,
+            title: 'Friendly vs Riverside FC',
+            format: 'match',
+            status: 'scheduled',
+            event_date: '2026-09-12T10:00:00.000Z',
+            location: 'Wits Main Oval',
+            my_rsvp: 'available',
+          },
+          {
+            id: 2,
+            title: 'Open League',
+            format: 'league',
+            status: 'open',
+            team_count: 1,
+            required_teams: 4,
+          },
+        ])
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => {
+      // Own RSVP badge instead of the staff controls.
+      expect(screen.getByText(/You\u2019re in/i)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Schedule event/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Join' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Gender filter/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('uses player-facing copy in the empty state for athletes', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      if (path === '/api/events') return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/No events scheduled yet/i)).toBeInTheDocument()
+      expect(screen.getByText(/coach\u2019s fixtures and training sessions/i)).toBeInTheDocument()
+    })
+  })
 })

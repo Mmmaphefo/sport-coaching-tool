@@ -35,6 +35,12 @@ const formatLabel = {
   tournament: 'Tournament',
 }
 
+const rsvpLabel = {
+  available: 'You\u2019re in',
+  unavailable: 'You\u2019re out',
+  maybe: 'Maybe',
+}
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function dayKey(date) {
@@ -65,6 +71,24 @@ function Events() {
 
   // --- Gender filter for matchmaking ---
   const [genderFilter, setGenderFilter] = useState(false)
+
+  // Players see the same schedule without the staff actions (scheduling,
+  // matchmaking filters, joining leagues).
+  const [role, setRole] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => {
+        if (!cancelled) setRole(me.role)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [getToken])
+
+  const isAthlete = role === 'athlete'
 
   const rosterBelowMinimum = !!(
     squad && squad.athlete_count < squad.min_roster_size
@@ -211,7 +235,8 @@ function Events() {
       navigate(`/events/${event.id}`)
       return
     }
-    navigate(event.status === 'live' ? `/live/${event.id}` : `/events/${event.id}`)
+    // Players never enter the live match centre — it's a staff logging UI.
+    navigate(event.status === 'live' && !isAthlete ? `/live/${event.id}` : `/events/${event.id}`)
   }
 
   const isLeagueForm = form.format === 'league' || form.format === 'tournament'
@@ -359,24 +384,28 @@ function Events() {
           <h1 className="evt-title-main">Events</h1>
         </div>
         <div className="evt-head-actions">
-          <button
-            type="button"
-            className={`evt-gender-btn${genderFilter ? ' evt-gender-btn-active' : ''}`}
-            onClick={() => setGenderFilter((v) => !v)}
-            title="Filter open events by compatible gender"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <circle cx="12" cy="8" r="5" />
-              <path d="M12 13v8M9 18h6" />
-            </svg>
-            {genderFilter ? 'Gender on' : 'Gender filter'}
-          </button>
-          <button type="button" className="evt-schedule-btn" onClick={openForm}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" focusable="false">
-              <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            Schedule event
-          </button>
+          {!isAthlete && (
+            <button
+              type="button"
+              className={`evt-gender-btn${genderFilter ? ' evt-gender-btn-active' : ''}`}
+              onClick={() => setGenderFilter((v) => !v)}
+              title="Filter open events by compatible gender"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="8" r="5" />
+                <path d="M12 13v8M9 18h6" />
+              </svg>
+              {genderFilter ? 'Gender on' : 'Gender filter'}
+            </button>
+          )}
+          {!isAthlete && (
+            <button type="button" className="evt-schedule-btn" onClick={openForm}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" focusable="false">
+                <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Schedule event
+            </button>
+          )}
         </div>
       </header>
 
@@ -388,7 +417,7 @@ function Events() {
         </p>
       </section>
 
-      {rosterBelowMinimum && (
+      {rosterBelowMinimum && !isAthlete && (
         <div className="roster-error">
           Your roster has {squad.athlete_count} athlete{squad.athlete_count === 1 ? '' : 's'}, but you need at
           least {squad.min_roster_size} to schedule or join a match, league, or tournament. Training sessions
@@ -545,7 +574,11 @@ function Events() {
           <Loader label="Loading events..." />
         ) : events.length === 0 ? (
           <div className="roster-empty">
-            <p>No events yet. Schedule your first match or training session.</p>
+            <p>
+              {isAthlete
+                ? 'No events scheduled yet. Your coach\u2019s fixtures and training sessions will appear here.'
+                : 'No events yet. Schedule your first match or training session.'}
+            </p>
           </div>
         ) : viewMode === 'list' ? (
           <div className="events-rows">
@@ -569,6 +602,11 @@ function Events() {
                         <span className={`event-status event-status-${event.status}`}>
                           {statusLabel[event.status] || event.status}
                         </span>
+                        {isAthlete && event.my_rsvp && (
+                          <span className={`evt-tag evt-tag-rsvp evt-tag-rsvp-${event.my_rsvp}`}>
+                            {rsvpLabel[event.my_rsvp] || event.my_rsvp}
+                          </span>
+                        )}
                         {event.gender && (
                           <span className={`evt-tag evt-tag-gender evt-tag-gender-${event.gender}`}>
                             {event.gender === 'male' ? '♂' : '♀'} {event.gender}
@@ -607,7 +645,7 @@ function Events() {
                     </span>
                   </button>
                   <div className="evt-actions">
-                    {event.status === 'open' && event.team_count < event.required_teams && (
+                    {!isAthlete && event.status === 'open' && event.team_count < event.required_teams && (
                       <button
                         type="button"
                         className="btn btn-gold btn-join"

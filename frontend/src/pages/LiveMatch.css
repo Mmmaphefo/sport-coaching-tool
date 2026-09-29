@@ -15,7 +15,7 @@
   margin-bottom: 32px;
   border-radius: var(--radius);
   background: var(--color-ink-fixed);
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
 }
 
 .live-team {
@@ -96,7 +96,7 @@
 
 .live-action-shot {
   background: #a8d94b;
-  color: var(--color-ink);
+  color: var(--color-ink-fixed);
 }
 
 .live-action-neutral {
@@ -107,7 +107,7 @@
 
 .live-action-yellow {
   background: #e8b930;
-  color: var(--color-ink);
+  color: var(--color-ink-fixed);
 }
 
 .live-action-red {
@@ -775,4 +775,15 @@
   font-size: 0.8rem;
   border-color: rgba(214, 158, 46, 0.5);
   color: #d69e2e;
+}
+
+/* Dark theme: the sim progress track's navy tint would vanish on the navy
+   card, so it switches to a white tint. */
+[data-theme="dark"] .live-sim-bar {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Dark theme: lift the light-tuned error red for the navy card. */
+[data-theme="dark"] .live-flow-hint {
+  color: #e5737a;
 }

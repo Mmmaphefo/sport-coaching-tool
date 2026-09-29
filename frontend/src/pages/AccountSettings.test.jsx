@@ -126,4 +126,24 @@ describe('AccountSettings', () => {
     })
     expect(mocks.signOut).toHaveBeenCalledWith({ redirectUrl: '/' })
   })
+
+  it('hides squad settings for athletes but keeps the profile and danger zone', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      return Promise.resolve({})
+    })
+
+    renderSettings()
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Team name/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: /Public squad page/i })).not.toBeInTheDocument()
+    })
+
+    // The Clerk profile (password change) and the danger zone remain.
+    expect(screen.getByTestId('user-profile')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Delete account/i })).toBeInTheDocument()
+    // Squad management is never even fetched for a player.
+    expect(mocks.apiRequest).not.toHaveBeenCalledWith('/api/squads/mine', expect.anything())
+  })
 })

@@ -10,17 +10,15 @@ function InviteAccept() {
 
   const [status, setStatus] = useState('idle') // idle | accepting | done | error
   const [error, setError] = useState('')
-  const [inviteData, setInviteData] = useState(null)
 
   const acceptInvite = useCallback(async () => {
     setStatus('accepting')
     setError('')
     try {
-      const data = await apiRequest(`/api/invites/${token}/accept`, {
+      await apiRequest(`/api/invites/${token}/accept`, {
         method: 'POST',
         getToken,
       })
-      setInviteData(data)
       setStatus('done')
     } catch (err) {
       setError(err.message)
@@ -35,9 +33,8 @@ function InviteAccept() {
   }, [isLoaded, isSignedIn, status, acceptInvite])
 
   if (status === 'done') {
-    if (inviteData?.role === 'athlete' && inviteData?.athleteId) {
-      return <Navigate to={`/roster/${inviteData.athleteId}`} replace />
-    }
+    // Everyone lands on the dashboard, players included — it puts the
+    // schedule and RSVPs in front of a new athlete straight away.
     return <Navigate to="/dashboard" replace />
   }
 

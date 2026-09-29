@@ -3,7 +3,9 @@
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
   color: #e6e8ec;
-  background: #0d0f13;
+  /* Always-dark page: use the sidebar navy (never flat black) so it matches
+     the app's dark theme. */
+  background: var(--color-ink-fixed);
   min-height: 100vh;
 }
 
@@ -38,7 +40,7 @@
 .public-squad-table td {
   text-align: left;
   padding: 0.5rem 0.6rem;
-  border-bottom: 1px solid #23262d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .public-squad-results {
@@ -51,6 +53,6 @@
   display: flex;
   gap: 1rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid #23262d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 0.9rem;
 }

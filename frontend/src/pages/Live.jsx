@@ -10,6 +10,21 @@ function Live() {
   const { getToken } = useAuth()
   const [liveEvent, setLiveEvent] = useState(undefined) // undefined = loading, null = none found
   const [error, setError] = useState('')
+  // Players never open the live match centre — they follow live scores from
+  // the dashboard instead.
+  const [role, setRole] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => {
+        if (!cancelled) setRole(me.role)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [getToken])
 
   useEffect(() => {
     async function find() {
@@ -27,6 +42,10 @@ function Live() {
     const poll = setInterval(find, 15000)
     return () => clearInterval(poll)
   }, [getToken])
+
+  if (role === 'athlete') {
+    return <Navigate to="/dashboard" replace />
+  }
 
   if (liveEvent === undefined) {
     return (

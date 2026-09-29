@@ -153,6 +153,21 @@ function LiveMatch() {
   const { getToken } = useAuth()
   const confirm = useConfirm()
 
+  // The match centre is a logging tool — players never see it, they follow
+  // live scores from the dashboard instead.
+  const [role, setRole] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => {
+        if (!cancelled) setRole(me.role)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [getToken])
+
   const [flow, setFlow] = useState(null)
   const [hint, setHint] = useState('')
   const [logging, setLogging] = useState(false)
@@ -369,6 +384,10 @@ function LiveMatch() {
   const simCancelRef = useRef(false)
 
   const navigate = useNavigate()
+
+  if (role === 'athlete') {
+    return <Navigate to="/dashboard" replace />
+  }
 
   if (loading) {
     return (

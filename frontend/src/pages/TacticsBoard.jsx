@@ -28,11 +28,17 @@ function TacticsBoard() {
   const [arrowStart, setArrowStart] = useState(null)
   const [arrowEnd, setArrowEnd] = useState(null)
   const [isDrawingArrow, setIsDrawingArrow] = useState(false)
+  const [role, setRole] = useState(null)
   const svgRef = useRef(null)
 
   useEffect(() => {
     loadTactics()
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => setRole(me.role))
+      .catch(() => {})
   }, [getToken])
+
+  const isAthlete = role === 'athlete'
 
   async function loadTactics() {
     try {
@@ -189,16 +195,19 @@ function TacticsBoard() {
           <div>
             <h1 className="tactics-title">Tactical Board</h1>
           </div>
-          <div className="tactics-actions">
-            <button className="btn btn-ghost" onClick={clearBoard}>Clear</button>
-            <button className="btn btn-gold" onClick={() => setShowSaveDialog(true)}>
-              {currentTactic ? 'Update' : 'Save'} Routine
-            </button>
-          </div>
+          {!isAthlete && (
+            <div className="tactics-actions">
+              <button className="btn btn-ghost" onClick={clearBoard}>Clear</button>
+              <button className="btn btn-gold" onClick={() => setShowSaveDialog(true)}>
+                {currentTactic ? 'Update' : 'Save'} Routine
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="tactics-layout">
           <aside className="tactics-sidebar">
+          {!isAthlete && (
             <div className="tactics-tools">
               <h3>Tools</h3>
               {Object.entries(ELEMENT_TYPES).map(([key, cfg]) => (
@@ -224,6 +233,7 @@ function TacticsBoard() {
                 <p className="tactics-hint">Click start point, then click end point</p>
               )}
             </div>
+          )}
 
             <div className="tactics-saved">
               <h3>Saved Routines</h3>
@@ -233,7 +243,7 @@ function TacticsBoard() {
                 tactics.map(t => (
                   <div key={t.id} className={`tactics-saved-item${currentTactic?.id === t.id ? ' active' : ''}`}>
                     <button onClick={() => loadTactic(t)}>{t.name}</button>
-                    <button className="tactics-delete" onClick={() => deleteTactic(t.id)}>×</button>
+                    {!isAthlete && <button className="tactics-delete" onClick={() => deleteTactic(t.id)}>×</button>}
                   </div>
                 ))
               )}

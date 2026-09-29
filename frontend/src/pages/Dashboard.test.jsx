@@ -1,7 +1,7 @@
 // AI assistance: drafted with Claude (Sonnet 5) via claude.ai; reviewed and tested by the project team.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom'
 import Dashboard from './Dashboard'
 
 const mocks = vi.hoisted(() => ({
@@ -52,6 +52,36 @@ const summaryPayload = {
   teamGoals: { total: 5, perMatch: 2.5 },
   attackLeaders: [{ id: 3, name: 'Sam Peters', position: 'Striker', goals: 3 }],
   nextEvent: null,
+}
+
+// One payload shape from GET /api/athletes/:id/stats, used by the player-view
+// tests. Log dates are relative to "now" so the default 7D period includes
+// them regardless of when the suite runs.
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString()
+
+const playerPayload = {
+  athlete: { id: 8, name: 'Jordan Blake', position: 'Midfielder', squad_number: 10, is_managed: false },
+  stats: { goals: 3, assists: 2, penalties: 0, yellowCards: 0, redCards: 0, appearances: 5 },
+  logs: [
+    { id: 1, event_id: 10, action_type: 'goal', value: 2, minute: 23, event_date: daysAgo(2), opponent: 'City United' },
+    { id: 2, event_id: 10, action_type: 'assist', value: 1, minute: 40, event_date: daysAgo(2), opponent: 'City United' },
+    { id: 3, event_id: 11, action_type: 'goal', value: 1, minute: 60, event_date: daysAgo(5), opponent: 'Riverside FC' },
+  ],
+  injuries: [],
+  currentInjury: null,
+}
+
+// Player-view API: the linked athlete account, their own stats, and the
+// squad summary (still loaded for the live score card and Attack leaders).
+function mockPlayerApi(extra = {}) {
+  mocks.apiRequest.mockImplementation((path) => {
+    if (path.startsWith('/api/dashboard/summary')) {
+      return Promise.resolve({ ...summaryPayload, ...extra })
+    }
+    if (path === '/api/account/me') return Promise.resolve({ role: 'athlete', athleteId: 8 })
+    if (path === '/api/athletes/8/stats') return Promise.resolve(playerPayload)
+    return Promise.resolve({})
+  })
 }
 
 function renderWithRouter(ui) {
@@ -218,5 +248,91 @@ describe('Dashboard', () => {
       expect(screen.getByRole('heading', { name: /The full squad picture/i })).toBeInTheDocument()
     })
     expect(screen.queryByTestId('dash-live-card')).not.toBeInTheDocument()
+  })
+
+  it('hides the invite assistant panel for athletes', async () => {
+    mockPlayerApi()
+
+    renderWithRouter(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Your game at a glance/i })).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: /Invite an Assistant/i })).not.toBeInTheDocument()
+      expect(screen.queryByPlaceholderText(/assistant@example.com/i)).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows personal stat cards, hides the squad panels, and keeps Attack leaders for players', async () => {
+    mockPlayerApi()
+
+    renderWithRouter(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Appearances')).toBeInTheDocument()
+    })
+
+    // Personal cards replace the squad stat grid (3 goals + 1 assist in 7D).
+    const statGrid = document.querySelector('.dash-stat-grid')
+    expect(within(statGrid).getByText('Goals')).toBeInTheDocument()
+    expect(within(statGrid).getByText('Appearances')).toBeInTheDocument()
+    expect(within(statGrid).getByText('Assists')).toBeInTheDocument()
+    expect(within(statGrid).getByText('Goal contributions')).toBeInTheDocument()
+    expect(screen.getByText('4 goal contributions')).toBeInTheDocument()
+    expect(screen.queryByText(/Squad readiness/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Available now/i)).not.toBeInTheDocument()
+
+    // Staff panels are gone; the team's Attack leaders stay.
+    expect(screen.queryByRole('heading', { name: /Position availability/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Squad status/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Attack leaders/i })).toBeInTheDocument()
+    expect(screen.getByText('Sam Peters')).toBeInTheDocument()
+  })
+
+  it('plots the matches on an interactive chart that opens the match', async () => {
+    mockPlayerApi()
+
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/events/:id" element={<div>MATCH PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    const cityBar = await screen.findByTitle(/vs City United/)
+    expect(cityBar).toHaveAttribute('title', 'vs City United — 2 goals, 1 assist')
+    expect(screen.getByTitle(/vs Riverside FC/)).toBeInTheDocument()
+    expect(screen.getByText(/Tap a bar to open the match/i)).toBeInTheDocument()
+
+    fireEvent.click(cityBar)
+
+    await waitFor(() => {
+      expect(screen.getByText('MATCH PAGE')).toBeInTheDocument()
+    })
+  })
+
+  it('keeps the live score for athletes but hides the match centre link', async () => {
+    mockPlayerApi({
+      liveEvent: {
+        kind: 'event',
+        id: 7,
+        title: 'vs City United',
+        homeLabel: 'Your squad',
+        awayLabel: 'City United',
+        homeScore: 2,
+        awayScore: 1,
+        link: '/live/7',
+      },
+    })
+
+    renderWithRouter(<Dashboard />)
+
+    const card = await screen.findByTestId('dash-live-card')
+    expect(within(card).getByText('vs City United')).toBeInTheDocument()
+    // Players watch the score from the outside — no link into the centre.
+    await waitFor(() => {
+      expect(within(card).queryByText(/Open live match centre/i)).not.toBeInTheDocument()
+    })
   })
 })

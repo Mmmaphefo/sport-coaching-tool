@@ -23,6 +23,10 @@ function AccountSettings() {
   const [publicLinkSaving, setPublicLinkSaving] = useState(false)
   const [publicLinkCopied, setPublicLinkCopied] = useState(false)
 
+  // Squad settings are staff territory — players see only their Clerk
+  // profile and the danger zone here.
+  const [role, setRole] = useState(null)
+
   const loadSquad = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -39,8 +43,29 @@ function AccountSettings() {
   }, [getToken])
 
   useEffect(() => {
-    loadSquad()
-  }, [loadSquad])
+    let cancelled = false
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => {
+        if (cancelled) return
+        setRole(me.role)
+        if (me.role === 'athlete') {
+          setLoading(false)
+        } else {
+          loadSquad()
+        }
+      })
+      .catch(() => {
+        // Fall back to the staff view rather than a dead loader.
+        if (cancelled) return
+        setRole('coach')
+        loadSquad()
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [getToken, loadSquad])
+
+  const isAthlete = role === 'athlete'
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -135,42 +160,44 @@ function AccountSettings() {
         <h1>Account settings</h1>
       </div>
 
-      <form className="roster-form" onSubmit={handleSubmit}>
-        <h3>Team</h3>
-        {loading ? (
-          <Loader label="Loading team details..." />
-        ) : (
-          <>
-            <div className="roster-form-grid">
-              <label className="roster-form-wide">
-                Team name
-                <input
-                  type="text"
-                  value={teamName}
-                  onChange={(e) => { setTeamName(e.target.value); setSaved(false) }}
-                  required
-                />
-              </label>
-              <label className="roster-form-wide">
-                Squad gender
-                <select value={gender} onChange={(e) => { setGender(e.target.value); setSaved(false) }}>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </label>
-            </div>
-            <div className="roster-form-actions">
-              <button type="submit" className="btn btn-gold" disabled={saving}>
-                {saving ? 'Saving...' : 'Save team name'}
-              </button>
-            </div>
-            {saved && <p className="settings-saved">Team name updated.</p>}
-          </>
-        )}
-        {error && <div className="roster-error">{error}</div>}
-      </form>
+      {!isAthlete && (
+        <form className="roster-form" onSubmit={handleSubmit}>
+          <h3>Team</h3>
+          {loading ? (
+            <Loader label="Loading team details..." />
+          ) : (
+            <>
+              <div className="roster-form-grid">
+                <label className="roster-form-wide">
+                  Team name
+                  <input
+                    type="text"
+                    value={teamName}
+                    onChange={(e) => { setTeamName(e.target.value); setSaved(false) }}
+                    required
+                  />
+                </label>
+                <label className="roster-form-wide">
+                  Squad gender
+                  <select value={gender} onChange={(e) => { setGender(e.target.value); setSaved(false) }}>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
+              </div>
+              <div className="roster-form-actions">
+                <button type="submit" className="btn btn-gold" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save team name'}
+                </button>
+              </div>
+              {saved && <p className="settings-saved">Team name updated.</p>}
+            </>
+          )}
+          {error && <div className="roster-error">{error}</div>}
+        </form>
+      )}
 
-      {squad && (
+      {!isAthlete && squad && (
         <div className="dashboard-card" style={{ marginTop: '1.5rem' }}>
           <h3>Public squad page</h3>
           <p>Share a read-only page of your roster, stats, and recent results with anyone — no login required.</p>

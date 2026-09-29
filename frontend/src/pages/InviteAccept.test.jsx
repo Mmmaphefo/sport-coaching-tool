@@ -74,7 +74,7 @@ describe('InviteAccept', () => {
     expect(await screen.findByText('Dashboard page')).toBeInTheDocument()
   })
 
-  it('accepts the invite and navigates to the athlete profile for athletes', async () => {
+  it('accepts the invite and navigates to the dashboard for athletes', async () => {
     mocks.signedIn = true
     mocks.apiRequest.mockResolvedValue({ role: 'athlete', athleteId: 7 })
 
@@ -87,7 +87,10 @@ describe('InviteAccept', () => {
       })
     })
 
-    expect(await screen.findByText('Roster athlete page')).toBeInTheDocument()
+    // Players land on the dashboard with their schedule and RSVPs, not on
+    // their own profile page.
+    expect(await screen.findByText('Dashboard page')).toBeInTheDocument()
+    expect(screen.queryByText('Roster athlete page')).not.toBeInTheDocument()
   })
 
   it('shows an error when the invite cannot be accepted', async () => {

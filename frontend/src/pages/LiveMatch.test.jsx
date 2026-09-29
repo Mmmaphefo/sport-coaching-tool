@@ -290,3 +290,39 @@ describe('LiveMatch simulation', () => {
     expect(screen.queryByRole('button', { name: 'Simulate Match' })).not.toBeInTheDocument()
   })
 })
+
+describe('LiveMatch player access', () => {
+  beforeEach(() => {
+    mocks.apiRequest.mockReset()
+    mocks.getToken.mockResolvedValue('test-token')
+  })
+
+  it('redirects players to the dashboard instead of the match centre', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      if (path === '/api/events/5') {
+        return Promise.resolve(
+          eventDetail({
+            event: { status: 'live', started_at: new Date().toISOString() },
+            lineups: lineupRows(11),
+          })
+        )
+      }
+      if (path === '/api/athletes') return Promise.resolve(athletes)
+      return Promise.resolve({})
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/live/5']}>
+        <Routes>
+          <Route path="/live/:id" element={<LiveMatch />} />
+          <Route path="/dashboard" element={<p>Dashboard page</p>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    // Players never see the logging UI, even on an in-progress match.
+    expect(await screen.findByText('Dashboard page')).toBeInTheDocument()
+    expect(screen.queryByText('Timeline')).not.toBeInTheDocument()
+  })
+})

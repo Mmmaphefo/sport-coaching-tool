@@ -88,7 +88,7 @@
   border-left: 5px solid var(--color-lime);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
 }
 
 .dash-live-top {
@@ -569,6 +569,91 @@
   margin-top: 2px;
 }
 
+/* Player dashboard: match-by-match goal contributions chart. Each column is
+   a button — tapping a bar opens that match. */
+.dash-player-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 150px;
+  margin-top: 10px;
+}
+
+.dash-player-chart-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.dash-player-bar-track {
+  width: 100%;
+  max-width: 46px;
+  height: 100px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.dash-player-bar-stack {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+  transition: filter 0.15s ease;
+}
+
+.dash-player-chart-col:hover .dash-player-bar-stack,
+.dash-player-chart-col:focus-visible .dash-player-bar-stack {
+  filter: brightness(1.08);
+}
+
+.dash-player-chart-col:focus-visible {
+  outline: 2px solid var(--color-sky);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.dash-player-bar-goals {
+  background: var(--color-gold);
+}
+
+.dash-player-bar-assists {
+  background: var(--color-blue);
+}
+
+.dash-player-chart-value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.dash-player-chart-label {
+  font-size: 11px;
+  color: var(--color-ink-soft);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.dash-legend-swatch-gold { background: var(--color-gold); }
+
+.dash-player-chart-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
 .dash-leader-list {
   display: flex;
   flex-direction: column;
@@ -690,4 +775,9 @@
 @keyframes dash-fade-scale {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* Dark theme: lift the light-tuned error red for the navy cards. */
+[data-theme="dark"] .dash-invite-error {
+  color: #e5737a;
 }

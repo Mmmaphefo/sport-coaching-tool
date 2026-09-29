@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId, getOrCreateUserId } = require('./_squad');
+const { getOwnedSquadId, getOwnedSquadIdForStaff, getOrCreateUserId } = require('./_squad');
 const {
   getLineup,
   getAthleteSquads,
@@ -274,12 +274,18 @@ async function getAthleteIdForUser(pool, userId) {
 // Routes
 // ---------------------------------------------------------------------------
 
-// GET /api/events — list events the logged-in coach's squad participates in
+// GET /api/events — list events the logged-in user's squad participates in.
+// For players, each row also carries their own RSVP status (my_rsvp) so the
+// events page can show it without a per-event request.
 router.get('/', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
     const squadId = await getOwnedSquadId(pool, clerkUserId);
     const { gender_filter } = req.query;
+
+    // The signed-in player's linked roster row, if any — drives my_rsvp.
+    const userId = await getOrCreateUserId(pool, clerkUserId);
+    const myAthleteId = await getAthleteIdForUser(pool, userId);
 
     // Fetch the squad's gender for matchmaking filtering
     let genderClause = '';
@@ -294,14 +300,19 @@ router.get('/', requireAuth(), async (req, res) => {
     }
 
     // The RSVP tallies ride along with the list so the calendar can show
-    // availability at a glance without one request per event.
+    // availability at a glance without one request per event. my_rsvp is
+    // only meaningful for a linked player; it stays null for staff. The
+    // athlete param is $3 when the gender filter is active, $2 otherwise.
+    const myRsvpParam = gender_filter === 'true' ? 3 : 2;
     const result = await pool.query(
       `SELECT e.*,
               opp_squad.gender,
               (SELECT COUNT(*) FROM event_teams et WHERE et.event_id = e.id) AS team_count,
               COALESCE(r.available, 0)::int AS available_count,
               COALESCE(r.unavailable, 0)::int AS unavailable_count,
-              COALESCE(r.maybe, 0)::int AS maybe_count
+              COALESCE(r.maybe, 0)::int AS maybe_count,
+              (SELECT er.status FROM event_rsvps er
+                WHERE er.event_id = e.id AND er.athlete_id = $${myRsvpParam} LIMIT 1) AS my_rsvp
        FROM events e
        LEFT JOIN event_teams et ON et.event_id = e.id AND et.squad_id = $1
        LEFT JOIN (
@@ -318,7 +329,7 @@ router.get('/', requireAuth(), async (req, res) => {
           OR (e.status = 'open' AND e.format IN ('league', 'tournament'))
        ${genderClause}
        ORDER BY e.event_date DESC`,
-      gender_filter === 'true' ? [squadId, genderParam] : [squadId]
+      gender_filter === 'true' ? [squadId, genderParam, myAthleteId] : [squadId, myAthleteId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -330,7 +341,8 @@ router.get('/', requireAuth(), async (req, res) => {
   }
 });
 
-// POST /api/events — schedule a new event or create a league/tournament
+// POST /api/events — schedule a new event or create a league/tournament.
+// Staff only (players see their scheduled events but never create them).
 router.post('/', requireAuth(), async (req, res) => {
   try {
     const {
@@ -383,7 +395,7 @@ router.post('/', requireAuth(), async (req, res) => {
 
     const { userId: clerkUserId } = getAuth(req);
     const userId = await getOrCreateUserId(pool, clerkUserId);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     // Training sessions don't need a full squad — but a match, league, or
     // tournament all involve this squad actually fielding a team, so they
@@ -444,6 +456,9 @@ router.post('/', requireAuth(), async (req, res) => {
 
     res.status(201).json({ ...event, clashes });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error creating event:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -544,11 +559,12 @@ router.get('/:id', requireAuth(), async (req, res) => {
   }
 });
 
-// PATCH /api/events/:id — update event (title, opponent, type, date, location, status)
+// PATCH /api/events/:id — update event (title, opponent, type, date, location, status).
+// Staff only.
 router.patch('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const check = await pool.query(
       'SELECT id, status, format, squad_id FROM events WHERE id = $1 AND squad_id = $2',
@@ -605,6 +621,9 @@ router.patch('/:id', requireAuth(), async (req, res) => {
 
     res.json({ ...updated, clashes });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error updating event:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -632,11 +651,12 @@ router.get('/:id/clashes', requireAuth(), async (req, res) => {
   }
 });
 
-// PATCH /api/events/:id/cancel — quick shortcut to mark an event cancelled
+// PATCH /api/events/:id/cancel — quick shortcut to mark an event cancelled.
+// Staff only.
 router.patch('/:id/cancel', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const result = await pool.query(
       `UPDATE events SET status = 'cancelled', updated_at = now() WHERE id = $1 AND squad_id = $2 RETURNING *`,
@@ -647,16 +667,20 @@ router.patch('/:id/cancel', requireAuth(), async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error cancelling event:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// DELETE /api/events/:id — permanently remove an event and its logs/fixtures
+// DELETE /api/events/:id — permanently remove an event and its logs/fixtures.
+// Staff only.
 router.delete('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const result = await pool.query(
       'DELETE FROM events WHERE id = $1 AND squad_id = $2 RETURNING id',
@@ -669,16 +693,19 @@ router.delete('/:id', requireAuth(), async (req, res) => {
 
     res.sendStatus(204);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error deleting event:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// POST /api/events/:id/join — join an open league/tournament
+// POST /api/events/:id/join — join an open league/tournament. Staff only.
 router.post('/:id/join', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const eventResult = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
     if (eventResult.rows.length === 0) {
@@ -734,6 +761,9 @@ router.post('/:id/join', requireAuth(), async (req, res) => {
 
     res.json({ joined: true, team_count: newCount, required_teams: event.required_teams });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error joining event:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -827,11 +857,11 @@ router.get('/:id/stats', requireAuth(), async (req, res) => {
 
 // PUT /api/events/:id/lineup — set the starting XI + bench for a simple
 // event (own squad only; the opponent here is a free-text name). Logging
-// stays locked until a lineup exists.
+// stays locked until a lineup exists. Staff only.
 router.put('/:id/lineup', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const event = await loadEventWithAccess(pool, req.params.id, squadId);
     if (!event) {
@@ -882,6 +912,9 @@ router.put('/:id/lineup', requireAuth(), async (req, res) => {
 
     res.json({ lineups: await getLineup(pool, { eventId: event.id }), startBlocked });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error saving event lineup:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -893,11 +926,12 @@ router.put('/:id/lineup', requireAuth(), async (req, res) => {
 // random standard. Nothing is written here: the client replays the script
 // through POST /:id/logs, so a simulated match is recorded exactly like a
 // manually logged one. `mode` only tells the client how to pace that replay.
+// Staff only.
 router.post('/:id/simulate', requireAuth(), async (req, res) => {
   try {
     const mode = req.body && req.body.mode === 'timed' ? 'timed' : 'quick';
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const event = await loadEventWithAccess(pool, req.params.id, squadId);
     if (!event) {
@@ -964,6 +998,9 @@ router.post('/:id/simulate', requireAuth(), async (req, res) => {
       ratings: ratingsPayload(ratings),
     });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error simulating event:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -996,7 +1033,9 @@ router.get('/:id/logs', requireAuth(), async (req, res) => {
   }
 });
 
-// POST /api/events/:id/logs — log a scoring moment / action against an athlete (US13)
+// POST /api/events/:id/logs — log a scoring moment / action against an athlete (US13).
+// Staff only: live logging is a staff activity; players watch live scores
+// from the dashboard instead.
 router.post('/:id/logs', requireAuth(), async (req, res) => {
   try {
     const { athlete_id, action_type, is_scoring, value, minute, notes } = req.body;
@@ -1007,7 +1046,7 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     const { userId: clerkUserId } = getAuth(req);
     const userId = await getOrCreateUserId(pool, clerkUserId);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const event = await loadEventWithAccess(pool, req.params.id, squadId);
     if (!event) {
@@ -1171,16 +1210,20 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     res.status(201).json(createdEntry);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error creating log entry:', err);
     res.status(500).json({ error: 'Server error', detail: err.message });
   }
 });
 
-// PATCH /api/events/:id/logs/:logId — edit a log entry just made (US14)
+// PATCH /api/events/:id/logs/:logId — edit a log entry just made (US14).
+// Staff only.
 router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const check = await pool.query(
       `SELECT l.id FROM log_entries l
@@ -1209,16 +1252,20 @@ router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error updating log entry:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// DELETE /api/events/:id/logs/:logId — undo a log entry (soft delete, US14)
+// DELETE /api/events/:id/logs/:logId — undo a log entry (soft delete, US14).
+// Staff only.
 router.delete('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const result = await pool.query(
       `UPDATE log_entries l
@@ -1254,6 +1301,9 @@ router.delete('/:id/logs/:logId', requireAuth(), async (req, res) => {
 
     res.sendStatus(204);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error undoing log entry:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -1344,7 +1394,7 @@ router.put('/:id/rsvps/:athleteId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
     const userId = await getOrCreateUserId(pool, clerkUserId);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const event = await loadEventWithAccess(pool, req.params.id, squadId);
     if (!event) {
@@ -1375,6 +1425,9 @@ router.put('/:id/rsvps/:athleteId', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error setting RSVP:', err.message);
     res.status(500).json({ error: 'Server error' });
   }

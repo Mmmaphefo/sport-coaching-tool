@@ -64,7 +64,7 @@ function StatNumber({ value, suffix = '' }) {
   return <>{animated}{suffix}</>
 }
 
-function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
+function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete = false }) {
   const { event, result, timeline, availability } = detail
   const confirm = useConfirm()
   const [logForm, setLogForm] = useState(emptyLogForm)
@@ -228,17 +228,17 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
           {event.location && <p className="event-detail-location">📍 {event.location}</p>}
         </div>
         <div className="event-detail-actions">
-          {event.status === 'scheduled' && (
+          {!isAthlete && event.status === 'scheduled' && (
             <button className="btn btn-gold" disabled={statusSaving} onClick={() => handleStatusChange('live')}>
               Start live
             </button>
           )}
-          {event.status === 'live' && (
+          {!isAthlete && event.status === 'live' && (
             <button className="btn btn-danger" disabled={statusSaving} onClick={() => handleStatusChange('completed')}>
               End event
             </button>
          )}
-          {(event.status === 'scheduled' || event.status === 'live') && (
+          {!isAthlete && (event.status === 'scheduled' || event.status === 'live') && (
             <button className="btn btn-ghost" onClick={openEventEdit}>
               Edit details
             </button>
@@ -308,7 +308,7 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
       <ClashBanner eventId={id} getToken={getToken} />
       <RsvpPanel eventId={id} getToken={getToken} />
 
-      {event.status === 'scheduled' && availability && !availability.meets && (
+      {event.status === 'scheduled' && availability && !availability.meets && !isAthlete && (
         <div className="event-availability-note">
           <strong>
             {availability.available} of {availability.required} players available
@@ -342,8 +342,9 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
         </div>
       )}
 
-      <form className="roster-form" onSubmit={handleLogSubmit}>
-        <h3>{editingLogId ? 'Edit log entry' : 'Log an action'}</h3>
+      {!isAthlete && (
+        <form className="roster-form" onSubmit={handleLogSubmit}>
+          <h3>{editingLogId ? 'Edit log entry' : 'Log an action'}</h3>
         <div className="roster-form-grid">
           <label>
             For
@@ -410,6 +411,7 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
         </div>
         {logError && <div className="roster-error">{logError}</div>}
       </form>
+      )}
 
       <h3 className="event-timeline-heading">Timeline</h3>
       {timeline.length === 0 ? (
@@ -426,10 +428,12 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
                 <span className="timeline-who">{entry.athlete_name || 'Opponent'}</span>
                 {entry.notes && <span className="timeline-notes">{entry.notes}</span>}
               </div>
-              <div className="timeline-actions">
-                <button className="btn btn-ghost" onClick={() => openEditLogForm(entry)}>Edit</button>
-                <button className="btn btn-danger" onClick={() => handleUndo(entry.id)}>Undo</button>
-              </div>
+              {!isAthlete && (
+                <div className="timeline-actions">
+                  <button className="btn btn-ghost" onClick={() => openEditLogForm(entry)}>Edit</button>
+                  <button className="btn btn-danger" onClick={() => handleUndo(entry.id)}>Undo</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -438,7 +442,7 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
   )
 }
 
-function LeagueDetail({ detail, id, getToken, onChange }) {
+function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
   const navigate = useNavigate()
   const { event, teams, fixtures, standings, stats } = detail
   const [joining, setJoining] = useState(false)
@@ -533,7 +537,7 @@ function LeagueDetail({ detail, id, getToken, onChange }) {
             {event.location && <span className="lg-loc">📍 {event.location}</span>}
           </div>
         </div>
-        {isOpen && !mySquadJoined && (
+        {isOpen && !mySquadJoined && !isAthlete && (
           <button className="btn btn-gold lg-join-btn" disabled={joining} onClick={handleJoin}>
             {joining ? <Loader inline label="Joining..." /> : 'Join league'}
           </button>
@@ -764,7 +768,7 @@ function LeagueDetail({ detail, id, getToken, onChange }) {
                     </span>
                   </div>
                   <div className="lg-fixture-actions">
-                    {fixture.is_home_mine && fixture.status === 'scheduled' ? (
+                    {fixture.is_home_mine && fixture.status === 'scheduled' && !isAthlete ? (
                       <div className="lg-kickoff-edit">
                         <input
                           type="datetime-local"
@@ -793,7 +797,7 @@ function LeagueDetail({ detail, id, getToken, onChange }) {
                         {fixture.event_date ? formatDateTime(fixture.event_date) : 'Kickoff TBC'}
                       </span>
                     )}
-                    {fixture.status === 'scheduled' && fixture.is_home_mine && (
+                    {fixture.status === 'scheduled' && fixture.is_home_mine && !isAthlete && (
                       <button
                         className="btn btn-gold lg-btn-live"
                         disabled={startingFixtureId === fixture.id}
@@ -806,7 +810,7 @@ function LeagueDetail({ detail, id, getToken, onChange }) {
                         )}
                       </button>
                     )}
-                    {fixture.status === 'live' && (
+                    {fixture.status === 'live' && !isAthlete && (
                       <button
                         className="btn btn-gold lg-btn-live"
                         onClick={() => navigate(`/live/fixture/${fixture.id}`)}
@@ -901,8 +905,23 @@ function EventDetail() {
   const [athletes, setAthletes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [role, setRole] = useState(null)
 
   const pollRef = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => {
+        if (!cancelled) setRole(me.role)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [getToken])
+
+  const isAthlete = role === 'athlete'
 
   const loadDetail = useCallback(async () => {
     try {
@@ -963,9 +982,9 @@ function EventDetail() {
   return (
     <Layout>
       {isLeague ? (
-        <LeagueDetail detail={detail} id={id} getToken={getToken} onChange={loadDetail} />
+        <LeagueDetail detail={detail} id={id} getToken={getToken} onChange={loadDetail} isAthlete={isAthlete} />
       ) : (
-        <SimpleEventDetail detail={detail} athletes={athletes} id={id} getToken={getToken} onChange={loadDetail} />
+        <SimpleEventDetail detail={detail} athletes={athletes} id={id} getToken={getToken} onChange={loadDetail} isAthlete={isAthlete} />
       )}
     </Layout>
   )

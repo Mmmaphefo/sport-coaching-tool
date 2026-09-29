@@ -4,7 +4,7 @@
 .tactics-page {
   margin: -40px -48px;
   padding: 40px 48px;
-  background: #eef2f7;
+  background: var(--color-canvas);
   min-height: 100vh;
 }
 
@@ -320,4 +320,51 @@
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
+}
+
+/* Dark theme: the light-grey panels become navy surfaces with chalk wells
+   so the board blends with the rest of the app instead of glowing white. */
+[data-theme="dark"] .tactics-tools,
+[data-theme="dark"] .tactics-saved,
+[data-theme="dark"] .tactics-help,
+[data-theme="dark"] .tactics-frames,
+[data-theme="dark"] .tactics-board,
+[data-theme="dark"] .tactics-modal {
+  background: var(--color-pitch);
+  border: 1px solid var(--color-line);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .tactics-tool,
+[data-theme="dark"] .tactics-saved-item,
+[data-theme="dark"] .tactics-frame-btn {
+  background: var(--color-chalk);
+}
+
+[data-theme="dark"] .tactics-tool:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .tactics-tool.active,
+[data-theme="dark"] .tactics-saved-item.active,
+[data-theme="dark"] .tactics-frame-btn.active,
+[data-theme="dark"] .tactics-hint {
+  background: rgba(var(--color-lime-rgb), 0.14);
+}
+
+[data-theme="dark"] .tactics-hint {
+  color: var(--color-lime);
+}
+
+[data-theme="dark"] .tactics-save-error {
+  background: rgba(229, 115, 122, 0.12);
+  border-color: rgba(229, 115, 122, 0.4);
+  color: #e5737a;
+}
+
+[data-theme="dark"] .tactics-modal input,
+[data-theme="dark"] .tactics-modal textarea {
+  background: var(--color-chalk);
+  border-color: var(--color-line);
+  color: var(--color-ink);
 }

@@ -3,11 +3,17 @@ const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
 const { getOwnedSquadId, getOwnedSquadIdForCoach, getOrCreateUserId } = require('./_squad');
 const { createInvite } = require('./invites');
+const { createPlayerAccount } = require('../lib/playerAccounts');
 
 const router = express.Router();
 
 // List the logged-in coach's roster, flagging currently-injured and
-// managed/rested athletes.
+// managed/rested athletes, plus each athlete's account/invite status so the
+// roster cards can show and drive the player-invite flow:
+//   'joined'  — athletes.user_id is linked to an accepted account
+//   'invited' — a pending invite exists for this athlete
+//   'none'    — no account and no pending invite
+// The latest invite wins (ordered by id DESC inside the LATERAL join).
 router.get('/', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
@@ -19,8 +25,19 @@ router.get('/', requireAuth(), async (req, res) => {
          WHERE i.athlete_id = a.id
            AND i.cleared_at IS NULL
            AND i.return_date >= CURRENT_DATE
-       ) AS is_injured
+       ) AS is_injured,
+       latest_invite.email AS invite_email,
+       CASE
+         WHEN a.user_id IS NOT NULL THEN 'joined'
+         WHEN latest_invite.id IS NOT NULL AND latest_invite.status = 'pending' THEN 'invited'
+         ELSE 'none'
+       END AS account_status
        FROM athletes a
+       LEFT JOIN LATERAL (
+         SELECT id, email, status FROM invites
+         WHERE athlete_id = a.id
+         ORDER BY id DESC LIMIT 1
+       ) latest_invite ON true
        WHERE a.squad_id = $1
        ORDER BY a.name`,
       [squadId]
@@ -33,8 +50,10 @@ router.get('/', requireAuth(), async (req, res) => {
 });
 
 // Add an athlete to the logged-in coach's squad. If an email is given, also
-// creates an invite (same mechanism as inviting an assistant) tied to this
-// specific athlete row, so accepting it links to these exact stats (US24/25).
+// pre-creates a Clerk player account and sends an invite (same mechanism as
+// inviting an assistant) tied to this specific athlete row, so accepting it
+// links to these exact stats (US24/25). The generated password comes back so
+// the coach can share the login details with the player.
 router.post('/', requireAuth(), async (req, res) => {
   try {
     const { name, position, squad_number, date_of_birth, contact_info, email, height_cm, weight_kg, tactical_tags, coach_notes } = req.body;
@@ -76,13 +95,33 @@ router.post('/', requireAuth(), async (req, res) => {
 
     let invite = null;
     if (email && email.trim()) {
-      invite = await createInvite(pool, {
-        email: email.trim(),
-        squadId,
-        invitedBy: userId,
-        role: 'athlete',
-        athleteId: athlete.id,
-      });
+      const trimmedEmail = email.trim();
+      // Account first: the password rides along in the invite email and in
+      // the response so the coach can hand over login details. A failure to
+      // create the account never blocks the invite itself.
+      const account = await createPlayerAccount({ email: trimmedEmail, name: athlete.name });
+      const credentials = account.created
+        ? { email: trimmedEmail, password: account.password }
+        : null;
+
+      try {
+        invite = await createInvite(pool, {
+          email: trimmedEmail,
+          squadId,
+          invitedBy: userId,
+          role: 'athlete',
+          athleteId: athlete.id,
+          credentials,
+        });
+        invite.account = account;
+      } catch (inviteErr) {
+        // Surface invite-specific errors (e.g. "already joined" 409) but
+        // keep the athlete row that was created.
+        return res.status(inviteErr.status || 500).json({
+          error: inviteErr.status ? inviteErr.message : 'Server error',
+          athlete,
+        });
+      }
     }
 
     res.status(201).json({ ...athlete, invite });
@@ -90,6 +129,71 @@ router.post('/', requireAuth(), async (req, res) => {
     console.error('Error creating athlete:', err);
     const status = err.status || 500;
     const message = (status === 403 || status === 409) ? err.message : 'Server error';
+    res.status(status).json({ error: message });
+  }
+});
+
+// POST /api/athletes/:id/invite — invite an existing roster player to create
+// their own account, from the card on the roster page (same infrastructure as
+// the assistant invite). Pre-creates the Clerk account and returns the
+// generated password so the coach can share the login details.
+router.post('/:id/invite', requireAuth(), async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    const trimmedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    const { userId: clerkUserId } = getAuth(req);
+    const userId = await getOrCreateUserId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+
+    const athleteResult = await pool.query(
+      'SELECT * FROM athletes WHERE id = $1 AND squad_id = $2',
+      [req.params.id, squadId]
+    );
+    if (athleteResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Athlete not found in your squad' });
+    }
+    const athlete = athleteResult.rows[0];
+
+    if (athlete.user_id) {
+      return res.status(409).json({ error: `${athlete.name} has already joined the squad` });
+    }
+
+    // Keep athletes.email in sync with the latest invite address.
+    if (athlete.email !== trimmedEmail) {
+      await pool.query('UPDATE athletes SET email = $1, updated_at = now() WHERE id = $2', [
+        trimmedEmail,
+        athlete.id,
+      ]);
+    }
+
+    const account = await createPlayerAccount({ email: trimmedEmail, name: athlete.name });
+    const credentials = account.created
+      ? { email: trimmedEmail, password: account.password }
+      : null;
+
+    const invite = await createInvite(pool, {
+      email: trimmedEmail,
+      squadId,
+      invitedBy: userId,
+      role: 'athlete',
+      athleteId: athlete.id,
+      credentials,
+    });
+
+    res.status(201).json({ invite, account });
+  } catch (err) {
+    console.error('Error inviting athlete:', err.message);
+    const status = err.status || 500;
+    const message = (status === 400 || status === 403 || status === 404 || status === 409)
+      ? err.message
+      : 'Server error';
     res.status(status).json({ error: message });
   }
 });

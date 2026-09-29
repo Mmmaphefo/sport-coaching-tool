@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
@@ -61,6 +61,92 @@ function currentSeason() {
     : `${y - 1}/${String(y % 100).padStart(2, '0')}`
 }
 
+// Player-account chips on the roster cards, driven by account_status from
+// GET /api/athletes.
+const ACCOUNT_STATUS_LABELS = {
+  joined: 'Joined',
+  invited: 'Invite pending',
+  none: 'No account',
+}
+
+function CopyButton({ value, label = 'Copy' }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard API unavailable (e.g. insecure context) — the value is
+      // still selectable for a manual copy.
+    }
+  }
+
+  return (
+    <button type="button" className="ros-copy-btn" onClick={copy}>
+      {copied ? 'Copied' : label}
+    </button>
+  )
+}
+
+// Shown after inviting a player (from the card or the add-athlete form):
+// the pre-created login details plus the invite link, so the coach can hand
+// them over. On a resend the password is long gone — only the link returns.
+function InviteCredentials({ name, invite }) {
+  if (!invite) return null
+
+  const credentials = invite.credentials || null
+  const accountNotCreated = invite.account && invite.account.created === false
+
+  return (
+    <div className="ros-credentials">
+      <p className="ros-credentials-title">
+        {invite.resent ? 'Invite re-sent' : 'Player invite sent'}
+      </p>
+      {invite.resent ? (
+        <p className="ros-credentials-text">
+          The pending invite link has been emailed again. The original password cannot be recovered — share the link below if it still hasn&apos;t arrived.
+        </p>
+      ) : credentials ? (
+        <p className="ros-credentials-text">
+          An account was created for {name}. Share these login details with them — they can change the password any time from Account settings.
+        </p>
+      ) : accountNotCreated ? (
+        <p className="ros-credentials-text">
+          An account with this email already exists, so no new password was generated — the invite link below still works.
+        </p>
+      ) : (
+        <p className="ros-credentials-text">
+          The account couldn&apos;t be created automatically, but the invite link below still works — {name} can set up their own sign-in when accepting.
+        </p>
+      )}
+      {credentials && (
+        <>
+          <div className="ros-cred-row">
+            <span className="ros-cred-label">Email</span>
+            <span className="ros-cred-value">{credentials.email}</span>
+            <CopyButton value={credentials.email} />
+          </div>
+          <div className="ros-cred-row">
+            <span className="ros-cred-label">Password</span>
+            <span className="ros-cred-value">{credentials.password}</span>
+            <CopyButton value={credentials.password} />
+          </div>
+        </>
+      )}
+      <div className="ros-cred-row">
+        <span className="ros-cred-label">Invite link</span>
+        <span className="ros-cred-value ros-cred-link">{invite.inviteLink}</span>
+        <CopyButton value={invite.inviteLink} />
+      </div>
+      <p className="ros-credentials-note">
+        Share these details securely — anyone with the link can accept the invite.
+      </p>
+    </div>
+  )
+}
+
 function Roster() {
   const { getToken } = useAuth()
   const confirm = useConfirm()
@@ -68,6 +154,7 @@ function Roster() {
   const [statsById, setStatsById] = useState({})
   const [squadName, setSquadName] = useState('')
   const [role, setRole] = useState(null)
+  const [athleteId, setAthleteId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(false)
@@ -83,6 +170,13 @@ function Roster() {
   const [photoSavingId, setPhotoSavingId] = useState(null)
   const fileInputRef = useRef(null)
   const photoTargetRef = useRef(null)
+  // Player invites from the card: which athlete's inline email form is open,
+  // and the credentials panel shown after an invite is sent.
+  const [inviteFor, setInviteFor] = useState(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteSending, setInviteSending] = useState(false)
+  const [inviteError, setInviteError] = useState('')
+  const [credentialsFor, setCredentialsFor] = useState(null)
 
   const isCoach = role === 'coach'
 
@@ -90,6 +184,7 @@ function Roster() {
     try {
       const me = await apiRequest('/api/account/me', { getToken })
       setRole(me.role)
+      setAthleteId(me.athleteId ?? null)
     } catch {
       setRole('coach')
     }
@@ -260,6 +355,7 @@ function Roster() {
           name: created.name,
           invited: !!created.invite,
           email: emailToInvite,
+          invite: created.invite || null,
         })
       }
       await loadAthletes()
@@ -341,6 +437,52 @@ function Roster() {
     } finally {
       setPhotoSavingId(null)
     }
+  }
+
+  // ---- Player invites (per card) ----
+
+  function openInviteForm(athlete) {
+    setCredentialsFor(null)
+    setInviteError('')
+    setInviteEmail(athlete.invite_email || athlete.email || '')
+    setInviteFor(athlete.id)
+  }
+
+  function closeInviteForm() {
+    setInviteFor(null)
+    setInviteEmail('')
+    setInviteError('')
+  }
+
+  async function submitInvite(e, athlete) {
+    e.preventDefault()
+    const email = inviteEmail.trim()
+    if (!email) {
+      setInviteError('Email is required')
+      return
+    }
+    setInviteSending(true)
+    setInviteError('')
+    try {
+      const res = await apiRequest(`/api/athletes/${athlete.id}/invite`, {
+        method: 'POST',
+        body: { email },
+        getToken,
+      })
+      closeInviteForm()
+      setCredentialsFor({ athleteId: athlete.id, invite: res.invite })
+      await loadAthletes()
+    } catch (err) {
+      setInviteError(err.message)
+    } finally {
+      setInviteSending(false)
+    }
+  }
+
+  // Players never see the team roster — they land on their own profile card
+  // instead, the same page the coach opens for them (/roster/:id).
+  if (role === 'athlete') {
+    return <Navigate to={athleteId ? `/roster/${athleteId}` : '/dashboard'} replace />
   }
 
   return (
@@ -613,6 +755,7 @@ function Roster() {
               <strong>{justAdded.name}</strong> was added to the roster.
               {justAdded.invited && ` An invite email has been sent to ${justAdded.email}.`}
             </p>
+            <InviteCredentials name={justAdded.name} invite={justAdded.invite} />
             <div className="roster-form-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setJustAdded(null)}>
                 Done
@@ -713,6 +856,59 @@ function Roster() {
                       </div>
                     </div>
                   </Link>
+                  {isCoach && (
+                    <div className="ros-account">
+                      <span
+                        className={`ros-account-chip ros-account-chip-${athlete.account_status || 'none'}`}
+                      >
+                        {ACCOUNT_STATUS_LABELS[athlete.account_status] || 'No account'}
+                      </span>
+                      {athlete.account_status !== 'joined'
+                        && inviteFor !== athlete.id
+                        && credentialsFor?.athleteId !== athlete.id && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost ros-invite-btn"
+                            onClick={() => openInviteForm(athlete)}
+                          >
+                            Invite player
+                          </button>
+                        )}
+                      {athlete.account_status !== 'joined' && inviteFor === athlete.id && (
+                        <form className="ros-account-form" onSubmit={(e) => submitInvite(e, athlete)}>
+                          <input
+                            type="email"
+                            value={inviteEmail}
+                            onChange={(e) => setInviteEmail(e.target.value)}
+                            placeholder="player@email.com"
+                            aria-label={`Invite email for ${athlete.name}`}
+                            required
+                          />
+                          <button type="submit" className="btn btn-gold" disabled={inviteSending}>
+                            {inviteSending ? <Loader inline label="Sending..." /> : 'Send invite'}
+                          </button>
+                          <button type="button" className="btn btn-ghost" onClick={closeInviteForm}>
+                            Cancel
+                          </button>
+                          {inviteError && <p className="ros-account-error">{inviteError}</p>}
+                        </form>
+                      )}
+                    </div>
+                  )}
+                  {isCoach && credentialsFor?.athleteId === athlete.id && (
+                    <div className="ros-credentials-wrap">
+                      <InviteCredentials name={athlete.name} invite={credentialsFor.invite} />
+                      <div className="ros-credentials-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setCredentialsFor(null)}
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {isCoach && editMode && (
                     <div className="ros-card-actions">
                       <button className="btn btn-ghost" onClick={() => openEditForm(athlete)}>

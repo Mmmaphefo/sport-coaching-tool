@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId, getOrCreateUserId } = require('./_squad');
+const { getOwnedSquadId, getOwnedSquadIdForStaff, getOrCreateUserId } = require('./_squad');
 const {
   getLineup,
   getAthleteSquads,
@@ -126,11 +126,11 @@ router.get('/:id/clashes', requireAuth(), async (req, res) => {
   }
 });
 
-// PATCH /api/fixtures/:id — update fixture status or kickoff time
+// PATCH /api/fixtures/:id — update fixture status or kickoff time (staff)
 router.patch('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
     if (!fixture) {
@@ -168,6 +168,9 @@ router.patch('/:id', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error updating fixture:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -180,7 +183,7 @@ router.patch('/:id', requireAuth(), async (req, res) => {
 router.put('/:id/lineup', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
     if (!fixture) {
@@ -229,6 +232,9 @@ router.put('/:id/lineup', requireAuth(), async (req, res) => {
 
     res.json({ lineups: await getLineup(pool, { fixtureId: fixture.id }), startBlocked });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error saving fixture lineup:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -246,7 +252,7 @@ router.post('/:id/simulate', requireAuth(), async (req, res) => {
   try {
     const mode = req.body && req.body.mode === 'timed' ? 'timed' : 'quick';
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
     if (!fixture) {
@@ -306,6 +312,9 @@ router.post('/:id/simulate', requireAuth(), async (req, res) => {
 
     res.json({ mode, events, summary, ratings: ratingsPayload(ratings) });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error simulating fixture:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -341,7 +350,7 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     const { userId: clerkUserId } = getAuth(req);
     const userId = await getOrCreateUserId(pool, clerkUserId);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
     if (!fixture) {
@@ -499,6 +508,9 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     res.status(201).json(createdEntry);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error creating fixture log entry:', err);
     res.status(500).json({ error: 'Server error', detail: err.message });
   }
@@ -508,7 +520,7 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
     if (!fixture) {
@@ -545,6 +557,9 @@ router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error updating fixture log entry:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -554,7 +569,7 @@ router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
 router.delete('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
     if (!fixture) {
@@ -595,6 +610,9 @@ router.delete('/:id/logs/:logId', requireAuth(), async (req, res) => {
 
     res.sendStatus(204);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error undoing fixture log entry:', err.message);
     res.status(500).json({ error: 'Server error' });
   }

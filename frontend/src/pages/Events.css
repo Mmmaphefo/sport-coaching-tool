@@ -5,7 +5,7 @@
 .events-page {
   margin: -40px -48px;
   padding: 40px 48px;
-  background: #eef2f7;
+  background: var(--color-canvas);
   min-height: 100vh;
 }
 
@@ -63,7 +63,7 @@
   border: none;
   border-radius: var(--radius);
   background: var(--color-lime);
-  color: var(--color-ink);
+  color: var(--color-ink-fixed);
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
@@ -112,7 +112,7 @@
 .evt-gender-btn-active {
   border-color: var(--color-lime);
   background: var(--color-lime);
-  color: var(--color-ink);
+  color: var(--color-ink-fixed);
 }
 
 /* ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  background: #e2e8f0;
+  background: var(--color-chalk);
   border-radius: 999px;
 }
 
@@ -315,7 +315,7 @@
   padding: 10px 12px;
   background: var(--color-ink-fixed);
   border-radius: var(--radius-sm, var(--radius));
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
   flex-shrink: 0;
 }
 
@@ -420,6 +420,73 @@
   font-size: 12px;
   font-weight: 600;
   color: #2f855a;
+}
+
+/* The signed-in player's own answer on a row (my_rsvp). */
+.evt-tag-rsvp-available {
+  background: rgba(47, 133, 90, 0.12);
+  color: #2f855a;
+}
+
+.evt-tag-rsvp-unavailable {
+  background: rgba(179, 59, 59, 0.12);
+  color: #b33b3b;
+}
+
+.evt-tag-rsvp-maybe {
+  background: rgba(214, 158, 46, 0.14);
+  color: #b7791f;
+}
+
+/* Dark theme: tag and status hues lifted for the navy cards — the
+   light-mode mid-tones sink into the navy and lose contrast. */
+[data-theme="dark"] .evt-tag {
+  color: #8ab4f8;
+}
+
+[data-theme="dark"] .event-status-scheduled {
+  color: #7cb3ef;
+  border-color: rgba(124, 179, 239, 0.45);
+}
+
+[data-theme="dark"] .event-status-live {
+  color: #e5737a;
+  border-color: rgba(229, 115, 122, 0.45);
+}
+
+[data-theme="dark"] .evt-tag-clash,
+[data-theme="dark"] .evt-tag-rsvp-maybe {
+  background: rgba(214, 158, 46, 0.2);
+  color: #e8bd5e;
+}
+
+[data-theme="dark"] .evt-tag-gender {
+  background: rgba(128, 90, 213, 0.28);
+  color: #b794f4;
+}
+
+[data-theme="dark"] .evt-tag-gender-male {
+  background: rgba(66, 153, 225, 0.24);
+  color: #7cb3ef;
+}
+
+[data-theme="dark"] .evt-tag-gender-female {
+  background: rgba(237, 100, 166, 0.24);
+  color: #f191ba;
+}
+
+[data-theme="dark"] .evt-rsvp {
+  color: #6fcf97;
+}
+
+[data-theme="dark"] .evt-tag-rsvp-available {
+  background: rgba(47, 133, 90, 0.3);
+  color: #6fcf97;
+}
+
+[data-theme="dark"] .evt-tag-rsvp-unavailable {
+  background: rgba(229, 115, 122, 0.18);
+  color: #e5737a;
 }
 
 .evt-actions {

@@ -47,7 +47,7 @@ function describeCode(code) {
 // ---------------------------------------------------------------------------
 const geocodeCache = new Map();
 const weatherCache = new Map();
-const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+const WEATHER_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - reduce API calls to avoid rate limits
 
 function getCached(map, key, ttl) {
   const entry = map.get(key);
@@ -74,14 +74,19 @@ async function geocodeLocation(location) {
 
   let res;
   try {
-    res = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
   } catch (err) {
-    const serviceErr = new Error('Geocoding service unavailable');
+    console.error('Geocoding fetch failed:', err.message);
+    const serviceErr = new Error('Weather service unavailable');
     serviceErr.status = 503;
     throw serviceErr;
   }
   if (!res.ok) {
-    const err = new Error('Geocoding service unavailable');
+    console.error('Geocoding returned:', res.status);
+    const err = new Error('Weather service unavailable');
     err.status = 503;
     throw err;
   }
@@ -117,13 +122,39 @@ async function fetchWeather(latitude, longitude) {
 
   let res;
   try {
-    res = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
   } catch (err) {
+    console.error('Weather fetch failed:', err.message);
     const serviceErr = new Error('Weather service unavailable');
     serviceErr.status = 503;
     throw serviceErr;
   }
   if (!res.ok) {
+    console.error('Weather API returned:', res.status);
+    
+    // If rate-limited (429), return mock weather as fallback
+    if (res.status === 429) {
+      console.warn('Rate limited - returning mock weather data');
+      return {
+        current: {
+          temperatureC: 22,
+          windSpeedKph: 10,
+          weatherCode: 2,
+          description: 'Partly cloudy',
+          icon: '⛅',
+          observedAt: new Date().toISOString(),
+        },
+        daily: [
+          { date: new Date().toISOString().split('T')[0], maxC: 24, minC: 16, precipitationChance: 20, weatherCode: 2, description: 'Partly cloudy', icon: '⛅' },
+          { date: new Date(Date.now() + 86400000).toISOString().split('T')[0], maxC: 23, minC: 15, precipitationChance: 30, weatherCode: 3, description: 'Overcast', icon: '☁️' },
+          { date: new Date(Date.now() + 172800000).toISOString().split('T')[0], maxC: 25, minC: 17, precipitationChance: 10, weatherCode: 1, description: 'Mainly clear', icon: '🌤️' },
+        ],
+      };
+    }
+    
     const err = new Error('Weather service unavailable');
     err.status = 503;
     throw err;

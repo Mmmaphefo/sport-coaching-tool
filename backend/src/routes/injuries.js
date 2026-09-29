@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId, getOwnedSquadIdForCoach, getOrCreateUserId } = require('./_squad');
+const { getOwnedSquadIdForStaff, getOwnedSquadIdForCoach, getOrCreateUserId } = require('./_squad');
 const { estimateReturn } = require('../lib/injury-estimator');
 
 const router = express.Router();
@@ -18,8 +18,8 @@ async function assertAthleteInSquad(athleteId, squadId) {
   }
 }
 
-// POST /api/injuries — log an injury (US29). Coach or assistant, matching
-// the same access live-logging endpoints allow.
+// POST /api/injuries — log an injury (US29). Staff only: players cannot log
+// injuries themselves, matching the access the live-logging endpoints allow.
 router.post('/', requireAuth(), async (req, res) => {
   try {
     const { athlete_id, description, date_sustained, severity } = req.body;
@@ -38,7 +38,7 @@ router.post('/', requireAuth(), async (req, res) => {
 
     const { userId: clerkUserId } = getAuth(req);
     const userId = await getOrCreateUserId(pool, clerkUserId);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     await assertAthleteInSquad(athlete_id, squadId);
 
@@ -66,7 +66,7 @@ router.post('/', requireAuth(), async (req, res) => {
   } catch (err) {
     console.error('Error logging injury:', err.message);
     const status = err.status || 500;
-    res.status(status).json({ error: status === 404 ? err.message : 'Server error' });
+    res.status(status).json({ error: status === 404 || status === 403 ? err.message : 'Server error' });
   }
 });
 
