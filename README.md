@@ -48,13 +48,16 @@ A full-stack web application for sports coaches and assistants to manage squads,
 - Tactics board with saved frames and the sessions / drill library (auto-generated from tactical goals)
 - Ratings-weighted match simulation (Quick Sim / Simulate Match) for events and fixtures
 - Coach-only stat overrides with an audit trail, merged over derived stats
-- Venue map editor — drop a pin on the pitch and centre the weather widget on it
+- Venue map on Mapbox's dark navigation basemap — search the venue by address,
+  drop a high-accuracy GPS pin, fine-tune by dragging, copy the exact
+  coordinates, and centre the weather widget on the pin (OpenStreetMap
+  fallback when no Mapbox token is set)
 - Offline logging queue with idempotent replay for weak-signal pitch-side use
 
 ### Public Pages (Sprint 3)
 - Public squad pages and a public landing directory of squads with live events
 - Shareable private links with CSV roster export
-- Email reminders before events and invite emails via Gmail
+- Email reminders before events and invite emails, both sent via Resend
 
 ## Tech Stack
 
@@ -99,6 +102,10 @@ sport-coaching-tool/
 - **Node.js** 22+
 - **PostgreSQL** 16+
 - **Clerk** account (free tier works) — [dashboard.clerk.com](https://dashboard.clerk.com)
+- **Mapbox** account (optional, free tier works, no credit card) —
+  [mapbox.com](https://mapbox.com). The public token unlocks the venue map's
+  dark basemap and address search; without it the map falls back to
+  OpenStreetMap
 
 ### 1. Clone the repository
 
@@ -131,6 +138,9 @@ FRONTEND_URL=http://localhost:5173
 ```env
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
 VITE_API_URL=http://localhost:3000
+# Optional - unlocks the Mapbox venue map (dark basemap + address search).
+# Leave unset to use the OpenStreetMap fallback.
+VITE_MAPBOX_TOKEN=
 ```
 
 ### 4. Run migrations
@@ -253,9 +263,10 @@ is only needed for out-of-band fixes.
 
 ### Deployment inventory
 
-Third-party services used by the app: **Clerk** (auth), **Gmail via nodemailer**
-(invite emails — needs `GMAIL_USER` + `GMAIL_APP_PASSWORD`), **Resend** (event
-reminder emails), **Open-Meteo** (venue weather, no key required) and the
+Third-party services used by the app: **Clerk** (auth), **Resend** (invite and
+event-reminder emails), **Mapbox** (venue map basemap, address search and
+reverse geocoding - public token baked into the frontend bundle),
+**Open-Meteo** (venue weather, no key required) and the
 **EA FC player ratings dataset** (Hugging Face datasets-server, no key required —
 weights the Quick Sim / Simulate Match simulation, with a position-based estimate
 for players it does not know). The football-data.org "Pro Fixtures" integration
@@ -280,16 +291,15 @@ Environment variables configured on the Render service: `DATABASE_URL` (Neon
 direct connection string — pooling **off**, no `-pooler` host, migrations break
 on the pooled URL), `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
 `CLERK_WEBHOOK_SECRET`, `FRONTEND_URL` (= https://kickstat.pages.dev, drives
-CORS), `GMAIL_USER` + `GMAIL_APP_PASSWORD` (invite emails via Gmail — added in
-Sprint 3 when invite delivery moved off Resend), `RESEND_API_KEY`, `EMAIL_FROM`
-(event reminders).
+CORS), `RESEND_API_KEY` and `EMAIL_FROM` (invite and reminder emails — both
+channels run through Resend after Gmail SMTP proved unreliable on Render).
 
 Key deployment files in this repo:
 
 | File | Purpose |
 |------|---------|
 | `render.yaml` | Render Blueprint: service definition, build/start commands (migrations then `node src/app.js`), health check |
-| `frontend/.env.production` | `VITE_API_URL` + `VITE_CLERK_PUBLISHABLE_KEY`, baked into the bundle at build time |
+| `frontend/.env.production` | `VITE_API_URL` + `VITE_CLERK_PUBLISHABLE_KEY` + `VITE_MAPBOX_TOKEN`, baked into the bundle at build time |
 | `frontend/public/_redirects` | SPA fallback (`/* /index.html 200`) |
 | `wrangler.jsonc` | Cloudflare Pages config (`pages_build_output_dir: frontend/dist`) |
 | `.gitea/workflows/ci.yml` | CI pipeline: lint/tests + coverage for both apps, Postgres address probe, combined coverage dashboard publish, Deploy Production job |
