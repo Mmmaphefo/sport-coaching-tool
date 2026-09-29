@@ -179,13 +179,17 @@ router.post('/:token/accept', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Invite email does not match signed-in user' })
     }
 
+    // Store the account's email alongside the role — it's what future
+    // logins use to know which type of user this is (see lib/userLinking.js).
     const userResult = await client.query(
-      `INSERT INTO users (clerk_id, role, squad_id)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (clerk_id, role, squad_id, email)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (clerk_id) DO UPDATE
-         SET role = EXCLUDED.role, squad_id = EXCLUDED.squad_id
+         SET role = EXCLUDED.role,
+             squad_id = EXCLUDED.squad_id,
+             email = COALESCE(users.email, EXCLUDED.email)
        RETURNING id`,
-      [clerkId, invite.role, invite.squad_id]
+      [clerkId, invite.role, invite.squad_id, email || invite.email]
     )
     const userId = userResult.rows[0].id
 
