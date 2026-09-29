@@ -74,14 +74,19 @@ async function geocodeLocation(location) {
 
   let res;
   try {
-    res = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
   } catch (err) {
-    const serviceErr = new Error('Geocoding service unavailable');
+    console.error('Geocoding fetch failed:', err.message);
+    const serviceErr = new Error('Weather service unavailable');
     serviceErr.status = 503;
     throw serviceErr;
   }
   if (!res.ok) {
-    const err = new Error('Geocoding service unavailable');
+    console.error('Geocoding returned:', res.status);
+    const err = new Error('Weather service unavailable');
     err.status = 503;
     throw err;
   }
@@ -117,13 +122,18 @@ async function fetchWeather(latitude, longitude) {
 
   let res;
   try {
-    res = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
   } catch (err) {
+    console.error('Weather fetch failed:', err.message);
     const serviceErr = new Error('Weather service unavailable');
     serviceErr.status = 503;
     throw serviceErr;
   }
   if (!res.ok) {
+    console.error('Weather API returned:', res.status);
     const err = new Error('Weather service unavailable');
     err.status = 503;
     throw err;
