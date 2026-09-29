@@ -1,7 +1,7 @@
 // AI assistance: drafted with Claude (Sonnet 5) via claude.ai; reviewed and tested by the project team.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom'
 import Roster from './Roster'
 import ConfirmProvider from '../components/ConfirmProvider'
 
@@ -97,30 +97,6 @@ describe('Roster', () => {
 
     expect(screen.getByRole('heading', { name: /Add athlete/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Save athlete/i })).toBeInTheDocument()
-  })
-
-  it('hides coach actions for athletes', async () => {
-    mocks.apiRequest.mockImplementation((path) => {
-      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
-      if (path === '/api/athletes') {
-        return Promise.resolve([{ id: 1, name: 'Alex Morgan', position: 'Forward' }])
-      }
-      return Promise.resolve({})
-    })
-
-    renderWithRouter(<Roster />)
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Alex Morgan' })).toBeInTheDocument()
-    })
-
-    expect(screen.queryByRole('button', { name: /Add athlete/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Edit/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Remove/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /photo for/i })).not.toBeInTheDocument()
-    // No account chips or invite controls either — the grid is read-only.
-    expect(screen.queryByText(/No account/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Invite player/i })).not.toBeInTheDocument()
   })
 
   it('shows account status chips and invite buttons for unjoined players', async () => {
@@ -393,5 +369,62 @@ describe('Roster', () => {
       )
     })
     expect(screen.queryByText('AM')).not.toBeInTheDocument()
+  })
+
+  it('redirects players to their own profile card instead of the team roster', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete', athleteId: 5 })
+      if (path === '/api/athletes') return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/roster']}>
+        <Routes>
+          <Route
+            path="/roster"
+            element={
+              <ConfirmProvider>
+                <Roster />
+              </ConfirmProvider>
+            }
+          />
+          <Route path="/roster/:id" element={<div>PLAYER CARD PAGE</div>} />
+          <Route path="/dashboard" element={<div>DASHBOARD PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('PLAYER CARD PAGE')).toBeInTheDocument()
+    })
+  })
+
+  it('sends an unlinked player account back to the dashboard', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      if (path === '/api/athletes') return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/roster']}>
+        <Routes>
+          <Route
+            path="/roster"
+            element={
+              <ConfirmProvider>
+                <Roster />
+              </ConfirmProvider>
+            }
+          />
+          <Route path="/dashboard" element={<div>DASHBOARD PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('DASHBOARD PAGE')).toBeInTheDocument()
+    })
   })
 })

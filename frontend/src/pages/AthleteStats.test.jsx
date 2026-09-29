@@ -150,7 +150,7 @@ describe('AthleteStats', () => {
   it('hides the log injury form for athletes', async () => {
     mocks.apiRequest.mockImplementation((path) => {
       if (path === '/api/athletes/5/stats') return Promise.resolve(basePayload)
-      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete', athleteId: 5 })
       return Promise.resolve({})
     })
 
@@ -200,5 +200,28 @@ describe('AthleteStats', () => {
     // Stats without an override don't carry the badge.
     const assistsCard = screen.getByText('Assists').closest('.ath-stat-card')
     expect(assistsCard.querySelector('.stat-override-badge')).toBeNull()
+  })
+
+  it('redirects a player away from another athlete card to their own', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/athletes/9/stats') {
+        return Promise.resolve({ ...basePayload, athlete: { ...basePayload.athlete, id: 9 } })
+      }
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete', athleteId: 5 })
+      return Promise.resolve({})
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/roster/9']}>
+        <Routes>
+          <Route path="/roster/5" element={<div>OWN CARD PAGE</div>} />
+          <Route path="/roster/:id" element={<AthleteStats />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('OWN CARD PAGE')).toBeInTheDocument()
+    })
   })
 })
