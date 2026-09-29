@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
@@ -12,6 +12,10 @@ const PERIODS = [
   { key: '30d', label: '30D' },
   { key: 'season', label: 'Season' },
 ]
+
+// Player-view periods map onto calendar-day cutoffs over the player's own
+// match logs; "season" shows everything the stats endpoint returned.
+const PLAYER_PERIOD_DAYS = { '7d': 7, '30d': 30, season: null }
 
 function StatNumber({ value, suffix = '' }) {
   const animated = useCountUp(value)
@@ -50,6 +54,7 @@ function placeholderTrainingLoadPath(count, width, height, padding) {
 
 function Dashboard() {
   const { getToken } = useAuth()
+  const navigate = useNavigate()
   const [period, setPeriod] = useState('7d')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -58,14 +63,21 @@ function Dashboard() {
   const [inviteSending, setInviteSending] = useState(false)
   const [inviteResult, setInviteResult] = useState(null)
   const [inviteError, setInviteError] = useState('')
-  // Players see the same squad intelligence minus the staff panels.
-  const [role, setRole] = useState(null)
+  // The account payload decides which view renders: staff get the squad
+  // intelligence, players get a personal view built from their own athlete
+  // stats (athleteId is the roster row their account is linked to).
+  const [me, setMe] = useState(null)
+  const [playerData, setPlayerData] = useState(null)
+  const [playerError, setPlayerError] = useState('')
+  // Snapshot "now" once for the player period cutoffs — same one-time
+  // pattern the profile card uses.
+  const [nowMs] = useState(() => Date.now())
 
   useEffect(() => {
     let cancelled = false
     apiRequest('/api/account/me', { getToken })
-      .then((me) => {
-        if (!cancelled) setRole(me.role)
+      .then((account) => {
+        if (!cancelled) setMe(account)
       })
       .catch(() => {})
     return () => {
@@ -73,7 +85,27 @@ function Dashboard() {
     }
   }, [getToken])
 
-  const isAthlete = role === 'athlete'
+  const isAthlete = me?.role === 'athlete'
+  const athleteId = me?.athleteId ?? null
+
+  // Players' personal numbers come from their own stats endpoint — the same
+  // payload that powers their profile card. The squad summary keeps loading
+  // for everyone (it powers the live score card and the attack leaders).
+  useEffect(() => {
+    if (!isAthlete || !athleteId) return undefined
+    let cancelled = false
+    setPlayerError('')
+    apiRequest(`/api/athletes/${athleteId}/stats`, { getToken })
+      .then((result) => {
+        if (!cancelled) setPlayerData(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setPlayerError(err.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAthlete, athleteId, getToken])
 
   const load = useCallback(async (silent = false) => {
     if (!silent) {
@@ -102,6 +134,59 @@ function Dashboard() {
     const poll = setInterval(() => load(true), 10000)
     return () => clearInterval(poll)
   }, [data?.liveEvent, load])
+
+  // ---- Player view: derived personal data ----------------------------------
+  // Everything is computed from the athlete stats payload's logs — the same
+  // entries the profile card aggregates. The period pills filter the logs;
+  // the season cards prefer the server's authoritative totals.
+  const playerLogs = useMemo(() => playerData?.logs ?? [], [playerData])
+
+  const playerPeriodLogs = useMemo(() => {
+    const days = PLAYER_PERIOD_DAYS[period]
+    if (!days) return playerLogs
+    const cutoff = nowMs - days * 86400000
+    return playerLogs.filter((l) => new Date(l.event_date).getTime() >= cutoff)
+  }, [playerLogs, period, nowMs])
+
+  const playerAgg = useMemo(() => {
+    const sumOf = (type) =>
+      playerPeriodLogs
+        .filter((l) => l.action_type === type)
+        .reduce((sum, l) => sum + (l.value || 0), 0)
+    const appearances = new Set(playerPeriodLogs.map((l) => l.event_id)).size
+    if (period === 'season' && playerData?.stats) {
+      return {
+        appearances: playerData.stats.appearances ?? appearances,
+        goals: playerData.stats.goals ?? sumOf('goal'),
+        assists: playerData.stats.assists ?? sumOf('assist'),
+      }
+    }
+    return { appearances, goals: sumOf('goal'), assists: sumOf('assist') }
+  }, [playerPeriodLogs, playerData, period])
+
+  // One entry per match the player contributed in, in the selected period —
+  // the data behind the interactive bar chart below.
+  const playerMatches = useMemo(() => {
+    const byEvent = new Map()
+    for (const log of playerPeriodLogs) {
+      if (!byEvent.has(log.event_id)) {
+        byEvent.set(log.event_id, {
+          eventId: log.event_id,
+          date: log.event_date,
+          opponent: log.opponent || 'Match',
+          goals: 0,
+          assists: 0,
+        })
+      }
+      const match = byEvent.get(log.event_id)
+      if (log.action_type === 'goal') match.goals += log.value || 0
+      if (log.action_type === 'assist') match.assists += log.value || 0
+    }
+    return [...byEvent.values()]
+      .filter((m) => m.goals + m.assists > 0)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(-12)
+  }, [playerPeriodLogs])
 
   const handleInvite = async (e) => {
     e.preventDefault()
@@ -143,7 +228,21 @@ function Dashboard() {
     )
   }
 
+  // Players additionally wait for their own stats payload before rendering
+  // the personal view — it drives the stat cards and the match chart.
+  if (isAthlete && !playerData && !playerError) {
+    return (
+      <Layout>
+        <Loader label="Loading your stats..." />
+      </Layout>
+    )
+  }
+
   const { squad, readinessTrend, positionAvailability, form, teamGoals, attackLeaders, nextEvent, liveEvent } = data
+
+  // Player match chart geometry: one stacked bar per match, scaled to the
+  // best single-match return in the period.
+  const maxContrib = Math.max(1, ...playerMatches.map((m) => m.goals + m.assists))
 
   const readinessDelta = readinessTrend.length > 1
     ? readinessTrend[readinessTrend.length - 1].readiness - readinessTrend[0].readiness
@@ -184,10 +283,11 @@ function Dashboard() {
 
       <div className="dash-intro">
         <span className="dash-date-line">{dateLabel.toUpperCase()} &middot; UPDATED {timeLabel}</span>
-        <h2 className="dash-headline">The full squad picture</h2>
+        <h2 className="dash-headline">{isAthlete ? 'Your game at a glance' : 'The full squad picture'}</h2>
         <p className="dash-sub">
-          Readiness, workload and output in one matchday view. Figures update
-          together as you change the period.
+          {isAthlete
+            ? 'Your appearances, goals, assists and match-by-match output. Figures update together as you change the period.'
+            : 'Readiness, workload and output in one matchday view. Figures update together as you change the period.'}
         </p>
         <div className="dash-period-toggle">
           {PERIODS.map((p) => (
@@ -201,6 +301,8 @@ function Dashboard() {
           ))}
         </div>
       </div>
+
+      {isAthlete && playerError && <p className="dash-invite-error">{playerError}</p>}
 
       {liveEvent && (
         <div className="dash-live-card" data-testid="dash-live-card">
@@ -231,55 +333,129 @@ function Dashboard() {
         </div>
       )}
 
-      <div className="dash-stat-grid">
-        <div className="dash-stat-card dash-stat-card-accent">
-          <span className="dash-stat-label">Squad readiness</span>
-          <span className="dash-stat-value"><StatNumber value={squad.readinessPct} suffix="%" /></span>
-          <span className={`dash-stat-delta ${readinessDelta >= 0 ? 'dash-stat-delta-up' : 'dash-stat-delta-down'}`}>
-            {readinessDelta >= 0 ? '+' : ''}{readinessDelta}% this period
-          </span>
-          {squad.gender && (
-            <span className="dash-gender-badge">{squad.gender === 'male' ? '♂ Male' : '♀ Female'}</span>
-          )}
-        </div>
+      {isAthlete ? (
+        <div className="dash-stat-grid">
+          <div className="dash-stat-card dash-stat-card-accent">
+            <span className="dash-stat-label">Goals</span>
+            <span className="dash-stat-value"><StatNumber value={playerAgg.goals} /></span>
+            <span className="dash-stat-note">{playerAgg.goals + playerAgg.assists} goal contributions</span>
+          </div>
 
-        <div className="dash-stat-card">
-          <span className="dash-stat-label">Available now</span>
-          <span className="dash-stat-value dash-stat-value-dark">
-            <StatNumber value={squad.readyCount} />/{squad.totalRoster}
-          </span>
-          <span className="dash-stat-note">{squad.managedCount} managed &middot; {squad.injuredCount} injured</span>
-        </div>
+          <div className="dash-stat-card">
+            <span className="dash-stat-label">Appearances</span>
+            <span className="dash-stat-value dash-stat-value-dark"><StatNumber value={playerAgg.appearances} /></span>
+            <span className="dash-stat-note">matches in this period</span>
+          </div>
 
-        <div className="dash-stat-card">
-          <span className="dash-stat-label">Team goals</span>
-          <span className="dash-stat-value dash-stat-value-dark"><StatNumber value={teamGoals.total} /></span>
-          <span className="dash-stat-note">{teamGoals.perMatch} per match</span>
-        </div>
+          <div className="dash-stat-card">
+            <span className="dash-stat-label">Assists</span>
+            <span className="dash-stat-value dash-stat-value-dark"><StatNumber value={playerAgg.assists} /></span>
+            <span className="dash-stat-note">set up by you</span>
+          </div>
 
-        <div className="dash-stat-card">
-          <span className="dash-stat-label">Recent form</span>
-          <span className="dash-stat-value dash-stat-value-dark dash-form-letters">
-            {form.results.length ? form.results.join(' ') : '\u2014'}
-          </span>
-          <span className="dash-stat-note">{form.points} points from {form.pointsPossible}</span>
-        </div>
-      </div>
-
-      <div className="dash-mid-grid">
-        <div className="dash-chart-card">
-          <span className="dash-chart-eyebrow">Performance pulse</span>
-          <h3>Readiness vs training load</h3>
-          <svg viewBox={`0 0 ${chartW} ${chartH}`} className="dash-line-chart" preserveAspectRatio="none">
-            <line x1={chartPad} y1={chartH - chartPad} x2={chartW - chartPad} y2={chartH - chartPad} stroke="var(--color-line)" strokeWidth="1" />
-            <path d={trainingPath} fill="none" stroke="var(--color-silver)" strokeWidth="2" strokeDasharray="5 5" />
-            <path d={linePath} fill="none" stroke="var(--color-blue)" strokeWidth="3" className="dash-line-path" />
-          </svg>
-          <div className="dash-chart-footer">
-            <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-blue" /> Readiness (real)</span>
-            <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-dashed" /> Training load (estimate)</span>
+          <div className="dash-stat-card">
+            <span className="dash-stat-label">Goal contributions</span>
+            <span className="dash-stat-value dash-stat-value-dark"><StatNumber value={playerAgg.goals + playerAgg.assists} /></span>
+            <span className="dash-stat-note">goals + assists</span>
           </div>
         </div>
+      ) : (
+        <div className="dash-stat-grid">
+          <div className="dash-stat-card dash-stat-card-accent">
+            <span className="dash-stat-label">Squad readiness</span>
+            <span className="dash-stat-value"><StatNumber value={squad.readinessPct} suffix="%" /></span>
+            <span className={`dash-stat-delta ${readinessDelta >= 0 ? 'dash-stat-delta-up' : 'dash-stat-delta-down'}`}>
+              {readinessDelta >= 0 ? '+' : ''}{readinessDelta}% this period
+            </span>
+            {squad.gender && (
+              <span className="dash-gender-badge">{squad.gender === 'male' ? '♂ Male' : '♀ Female'}</span>
+            )}
+          </div>
+
+          <div className="dash-stat-card">
+            <span className="dash-stat-label">Available now</span>
+            <span className="dash-stat-value dash-stat-value-dark">
+              <StatNumber value={squad.readyCount} />/{squad.totalRoster}
+            </span>
+            <span className="dash-stat-note">{squad.managedCount} managed &middot; {squad.injuredCount} injured</span>
+          </div>
+
+          <div className="dash-stat-card">
+            <span className="dash-stat-label">Team goals</span>
+            <span className="dash-stat-value dash-stat-value-dark"><StatNumber value={teamGoals.total} /></span>
+            <span className="dash-stat-note">{teamGoals.perMatch} per match</span>
+          </div>
+
+          <div className="dash-stat-card">
+            <span className="dash-stat-label">Recent form</span>
+            <span className="dash-stat-value dash-stat-value-dark dash-form-letters">
+              {form.results.length ? form.results.join(' ') : '\u2014'}
+            </span>
+            <span className="dash-stat-note">{form.points} points from {form.pointsPossible}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="dash-mid-grid">
+        {isAthlete ? (
+          <div className="dash-chart-card">
+            <span className="dash-chart-eyebrow">Match by match</span>
+            <h3>Your goal contributions</h3>
+            {playerMatches.length === 0 ? (
+              <p className="roster-status">No goals or assists logged in this period yet.</p>
+            ) : (
+              <>
+                <div className="dash-player-chart">
+                  {playerMatches.map((match) => {
+                    const total = match.goals + match.assists
+                    const heightPct = Math.round((total / maxContrib) * 100)
+                    return (
+                      <button
+                        type="button"
+                        key={match.eventId}
+                        className="dash-player-chart-col"
+                        title={`vs ${match.opponent} — ${match.goals} goal${match.goals === 1 ? '' : 's'}, ${match.assists} assist${match.assists === 1 ? '' : 's'}`}
+                        onClick={() => navigate(`/events/${match.eventId}`)}
+                      >
+                        <span className="dash-player-bar-track">
+                          <span className="dash-player-bar-stack" style={{ height: `${heightPct}%` }}>
+                            {match.assists > 0 && (
+                              <span className="dash-player-bar-assists" style={{ flexGrow: match.assists }} />
+                            )}
+                            <span className="dash-player-bar-goals" style={{ flexGrow: match.goals }} />
+                          </span>
+                        </span>
+                        <span className="dash-player-chart-value">{total}</span>
+                        <span className="dash-player-chart-label">
+                          {new Date(match.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="dash-chart-footer">
+                  <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-gold" /> Goals</span>
+                  <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-blue" /> Assists</span>
+                  <span className="dash-player-chart-hint">Tap a bar to open the match</span>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="dash-chart-card">
+            <span className="dash-chart-eyebrow">Performance pulse</span>
+            <h3>Readiness vs training load</h3>
+            <svg viewBox={`0 0 ${chartW} ${chartH}`} className="dash-line-chart" preserveAspectRatio="none">
+              <line x1={chartPad} y1={chartH - chartPad} x2={chartW - chartPad} y2={chartH - chartPad} stroke="var(--color-line)" strokeWidth="1" />
+              <path d={trainingPath} fill="none" stroke="var(--color-silver)" strokeWidth="2" strokeDasharray="5 5" />
+              <path d={linePath} fill="none" stroke="var(--color-blue)" strokeWidth="3" className="dash-line-path" />
+            </svg>
+            <div className="dash-chart-footer">
+              <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-blue" /> Readiness (real)</span>
+              <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-dashed" /> Training load (estimate)</span>
+            </div>
+          </div>
+        )}
 
         <div className="dash-fixture-card">
           {nextEvent ? (
@@ -298,15 +474,19 @@ function Dashboard() {
                   <span className="dash-fixture-value">{nextEvent.location || 'TBC'}</span>
                 </div>
               </div>
-              <div className="dash-fixture-confidence">
-                <div className="dash-fixture-confidence-top">
-                  <span>Lineup confidence</span>
-                  <span className="dash-fixture-confidence-tag">estimate</span>
+              {/* Lineup confidence is a staff planning tool — players don't
+                  see squad-selection estimates. */}
+              {!isAthlete && (
+                <div className="dash-fixture-confidence">
+                  <div className="dash-fixture-confidence-top">
+                    <span>Lineup confidence</span>
+                    <span className="dash-fixture-confidence-tag">estimate</span>
+                  </div>
+                  <div className="dash-confidence-track">
+                    <div className="dash-confidence-fill" style={{ width: '70%' }} />
+                  </div>
                 </div>
-                <div className="dash-confidence-track">
-                  <div className="dash-confidence-fill" style={{ width: '70%' }} />
-                </div>
-              </div>
+              )}
               <Link to={`/events/${nextEvent.id}`} className="dash-fixture-link">Open match details &rsaquo;</Link>
             </>
           ) : (
@@ -321,22 +501,24 @@ function Dashboard() {
       </div>
 
       <div className="dash-bottom-grid">
-        <div className="dash-panel">
-          <span className="dash-chart-eyebrow">By unit</span>
-          <h3>Position availability</h3>
-          <div className="dash-bar-chart">
-            {posEntries.map(([label, count]) => (
-              <div className="dash-bar-col" key={label}>
-                <div className="dash-bar-track">
-                  <div className="dash-bar-fill" style={{ height: `${(count / maxPos) * 100}%` }} />
+        {!isAthlete && (
+          <div className="dash-panel">
+            <span className="dash-chart-eyebrow">By unit</span>
+            <h3>Position availability</h3>
+            <div className="dash-bar-chart">
+              {posEntries.map(([label, count]) => (
+                <div className="dash-bar-col" key={label}>
+                  <div className="dash-bar-track">
+                    <div className="dash-bar-fill" style={{ height: `${(count / maxPos) * 100}%` }} />
+                  </div>
+                  <span className="dash-bar-value">{count}</span>
+                  <span className="dash-bar-label">{label}</span>
                 </div>
-                <span className="dash-bar-value">{count}</span>
-                <span className="dash-bar-label">{label}</span>
-              </div>
-            ))}
+              ))}
+            </div>
+            <Link to="/roster" className="dash-panel-link">Manage full roster &rsaquo;</Link>
           </div>
-          <Link to="/roster" className="dash-panel-link">Manage full roster &rsaquo;</Link>
-        </div>
+        )}
 
         <div className="dash-panel">
           <span className="dash-chart-eyebrow">Goal contributions</span>
@@ -362,35 +544,37 @@ function Dashboard() {
           )}
         </div>
 
-        <div className="dash-panel">
-          <span className="dash-chart-eyebrow">Risk monitor</span>
-          <h3>Squad status</h3>
-          <div className="dash-donut-wrap">
-            <svg viewBox="0 0 140 140" className="dash-donut">
-              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--color-line)" strokeWidth="16" />
-              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--color-blue)" strokeWidth="16"
-                strokeDasharray={`${readySeg} ${circumference - readySeg}`} transform="rotate(-90 70 70)" />
-              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--color-lime)" strokeWidth="16"
-                strokeDasharray={`${managedSeg} ${circumference - managedSeg}`} strokeDashoffset={-readySeg} transform="rotate(-90 70 70)" />
-              <circle cx="70" cy="70" r="54" fill="none" stroke="#b33b3b" strokeWidth="16"
-                strokeDasharray={`${injuredSeg} ${circumference - injuredSeg}`} strokeDashoffset={-(readySeg + managedSeg)} transform="rotate(-90 70 70)" />
-            </svg>
+        {!isAthlete && (
+          <div className="dash-panel">
+            <span className="dash-chart-eyebrow">Risk monitor</span>
+            <h3>Squad status</h3>
+            <div className="dash-donut-wrap">
+              <svg viewBox="0 0 140 140" className="dash-donut">
+                <circle cx="70" cy="70" r="54" fill="none" stroke="var(--color-line)" strokeWidth="16" />
+                <circle cx="70" cy="70" r="54" fill="none" stroke="var(--color-blue)" strokeWidth="16"
+                  strokeDasharray={`${readySeg} ${circumference - readySeg}`} transform="rotate(-90 70 70)" />
+                <circle cx="70" cy="70" r="54" fill="none" stroke="var(--color-lime)" strokeWidth="16"
+                  strokeDasharray={`${managedSeg} ${circumference - managedSeg}`} strokeDashoffset={-readySeg} transform="rotate(-90 70 70)" />
+                <circle cx="70" cy="70" r="54" fill="none" stroke="#b33b3b" strokeWidth="16"
+                  strokeDasharray={`${injuredSeg} ${circumference - injuredSeg}`} strokeDashoffset={-(readySeg + managedSeg)} transform="rotate(-90 70 70)" />
+              </svg>
+            </div>
+            <div className="dash-donut-legend">
+              <div className="dash-donut-stat">
+                <span className="dash-donut-num">{squad.readyCount}</span>
+                <span className="dash-donut-label">Ready</span>
+              </div>
+              <div className="dash-donut-stat">
+                <span className="dash-donut-num">{squad.managedCount}</span>
+                <span className="dash-donut-label">Managed</span>
+              </div>
+              <div className="dash-donut-stat">
+                <span className="dash-donut-num">{squad.injuredCount}</span>
+                <span className="dash-donut-label">Injured</span>
+              </div>
+            </div>
           </div>
-          <div className="dash-donut-legend">
-            <div className="dash-donut-stat">
-              <span className="dash-donut-num">{squad.readyCount}</span>
-              <span className="dash-donut-label">Ready</span>
-            </div>
-            <div className="dash-donut-stat">
-              <span className="dash-donut-num">{squad.managedCount}</span>
-              <span className="dash-donut-label">Managed</span>
-            </div>
-            <div className="dash-donut-stat">
-              <span className="dash-donut-num">{squad.injuredCount}</span>
-              <span className="dash-donut-label">Injured</span>
-            </div>
-          </div>
-        </div>
+        )}
 
         {!isAthlete && (
           <div className="dash-panel">
