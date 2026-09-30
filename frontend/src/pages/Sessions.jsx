@@ -55,6 +55,7 @@ function Sessions() {
   const [drills, setDrills] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [role, setRole] = useState(null)
 
   // Filters
   const [filterGoal, setFilterGoal] = useState('')
@@ -80,7 +81,14 @@ function Sessions() {
   const [genDuration, setGenDuration] = useState('60')
   const [genError, setGenError] = useState('')
 
-  const loadDrills = useCallback(async () => {
+  const isAthlete = role === 'athlete'
+
+  useEffect(() => {
+    loadDrills()
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => setRole(me.role))
+      .catch(() => {})
+  }, [getToken])
     try {
       const params = new URLSearchParams()
       if (filterGoal) params.set('tactical_goal', filterGoal)
@@ -269,16 +277,18 @@ function Sessions() {
             <div className="sessions-eyebrow">Session Generator</div>
             <h1 className="sessions-title">Drill Library</h1>
           </div>
-          <div className="sessions-head-actions">
-            <button className="sessions-gen-btn" onClick={() => setGenerateOpen(true)}>Generate Session</button>
-            <button
-              className={`sessions-builder-toggle ${builderOpen ? 'sessions-builder-toggle-active' : ''}`}
-              onClick={() => setBuilderOpen(!builderOpen)}
-            >
-              Session Plan ({sessionPlan.length})
-            </button>
-            <button className="sessions-add-btn" onClick={openCreate}>+ Add Drill</button>
-          </div>
+          {!isAthlete && (
+            <div className="sessions-head-actions">
+              <button className="sessions-gen-btn" onClick={() => setGenerateOpen(true)}>Generate Session</button>
+              <button
+                className={`sessions-builder-toggle ${builderOpen ? 'sessions-builder-toggle-active' : ''}`}
+                onClick={() => setBuilderOpen(!builderOpen)}
+              >
+                Session Plan ({sessionPlan.length})
+              </button>
+              <button className="sessions-add-btn" onClick={openCreate}>+ Add Drill</button>
+            </div>
+          )}
         </div>
 
         {/* Filters */}
