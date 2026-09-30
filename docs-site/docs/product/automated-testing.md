@@ -138,10 +138,13 @@ Frontend component tests live next to the components they test:
 frontend/src/**/*.test.jsx and frontend/src/**/*.test.js
 ```
 
-19 test files cover the pages (Dashboard, Roster, Events, EventDetail, LiveMatch,
+20 test files cover the pages (Dashboard, Roster, Events, EventDetail, LiveMatch,
 AthleteStats, AccountSettings, InviteAccept, PublicLanding, PublicSquad,
 Welcome), the shared components (Layout, ProtectedRoute, ConfirmProvider, Pitch,
-VenueMapEditor), and the lib modules (`api`, `lineups`, `simulation`). The
+VenueMapEditor, WeatherWidget), and the lib modules (`api`, `lineups`, `simulation`).
+The venue map is exercised in both of its modes — Mapbox (address search,
+reverse geocoding, high-accuracy GPS) and the OpenStreetMap fallback — with
+geocoding responses stubbed so CI needs no token or network access. The
 suite runs with a raised `testTimeout` in `vitest.config.js` because jsdom
 rendering of the data-heavy pages exceeds the 5 s default on slower machines.
 
@@ -164,9 +167,10 @@ Open this file in a browser to inspect coverage by folder and source file. The
 report also prints a summary in the terminal.
 
 The current baseline is **145 backend integration tests** (statement coverage
-above 75%) plus **123 frontend component tests** (about 63% line coverage on
-the 2026-09-28 local run). Both suites run on every push — the live numbers
-are on the coverage dashboard linked below.
+above 75%) plus **133 frontend component tests** (about 63% line coverage on
+the 2026-09-28 local run; the Sprint 4 venue-map upgrade added coverage for
+address search, GPS accuracy and the read-only map). Both suites run on every
+push — the live numbers are on the coverage dashboard linked below.
 
 ## Live coverage dashboard
 

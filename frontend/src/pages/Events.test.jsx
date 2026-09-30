@@ -193,4 +193,43 @@ describe('Events', () => {
       expect(screen.getByText(/coach\u2019s fixtures and training sessions/i)).toBeInTheDocument()
     })
   })
+
+  it('sends the map pin with a newly scheduled event', async () => {
+    const posts = []
+    mocks.apiRequest.mockImplementation((path, options = {}) => {
+      if (path === '/api/events' && options.method === 'POST') {
+        posts.push(options.body)
+        return Promise.resolve({ id: 42 })
+      }
+      if (path.startsWith('/api/events/clashes')) return Promise.resolve([])
+      if (path === '/api/events') return Promise.resolve([])
+      if (path === '/api/squads/mine') {
+        return Promise.resolve({ id: 7, athlete_count: 15, min_roster_size: 11 })
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Schedule event/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Schedule event/i }))
+
+    fireEvent.change(screen.getByLabelText(/Date & time/i), { target: { value: '2026-10-01T10:00' } })
+    fireEvent.change(screen.getByLabelText(/Opponent/i), { target: { value: 'Riverside FC' } })
+
+    // Drop the pin — with jsdom's zero-size canvas a click at (0, 0) resolves
+    // to the map's default Johannesburg centre.
+    const map = screen.getByRole('application', { name: /venue map/i })
+    fireEvent.pointerDown(map, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerUp(map, { pointerId: 1, clientX: 0, clientY: 0 })
+
+    await waitFor(() => expect(screen.getByText(/Pinned at/i)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /Create event/i }))
+
+    await waitFor(() => expect(posts.length).toBe(1))
+    expect(posts[0].location_lat).toBe(-26.2041)
+    expect(posts[0].location_lng).toBe(28.0473)
+    expect(posts[0].location).toBeNull()
+  })
 })

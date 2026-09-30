@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { apiRequest } from '../lib/api'
+import { mapboxEnabled, mapboxStaticUrl } from '../lib/mapbox'
 import Loader from './Loader'
 import './WeatherWidget.css'
 
@@ -127,10 +128,33 @@ export default function WeatherWidget({ location, latitude, longitude, compact =
   )
 }
 
-// Small embedded venue map — uses OpenStreetMap's free public embed (no API
-// key or account needed), centered on the coordinates the weather lookup
-// already resolved above, so this adds no extra network request.
+// Small embedded venue map, centred on the coordinates the weather lookup
+// already resolved above (no extra geocoding request). With a Mapbox token
+// configured it renders a static image on the same dark navigation basemap
+// as the venue editor — one GET, no interactivity, no API cost beyond a
+// single map load. Without a token it falls back to OpenStreetMap's free
+// public embed.
 function VenueMap({ latitude, longitude, label }) {
+  if (mapboxEnabled()) {
+    const src = mapboxStaticUrl({ latitude, longitude, width: 640, height: 360, zoom: 15 })
+    // A plain deep link — no Google API involved — because "open this pin in
+    // the maps app on my phone" is what coaches actually do with it.
+    const largeMapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`
+    return (
+      <div className="weather-widget-map">
+        <img
+          className="weather-widget-map-img"
+          src={src}
+          alt={`Map of ${label || 'venue'}`}
+          loading="lazy"
+        />
+        <a href={largeMapUrl} target="_blank" rel="noreferrer" className="weather-widget-map-link">
+          View larger map
+        </a>
+      </div>
+    )
+  }
+
   const delta = 0.01
   const bbox = [
     longitude - delta, latitude - delta,
