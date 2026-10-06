@@ -6,7 +6,7 @@ function Welcome() {
   return (
     <>
       <SignedIn>
-        <Navigate to="/dashboard" replace />
+        <Navigate to="/role-select" replace />
       </SignedIn>
       <SignedOut>
         <div className="welcome-hero">
@@ -39,7 +39,7 @@ function Welcome() {
               your team.
             </p>
             <div className="welcome-actions">
-              <Link to="/public" className="welcome-cta">
+              <Link to="/role-select" className="welcome-cta">
                 GET STARTED <span className="welcome-cta-arrow">&rarr;</span>
               </Link>
               <Link to="/sign-in" className="welcome-cta-secondary">SIGN IN</Link>

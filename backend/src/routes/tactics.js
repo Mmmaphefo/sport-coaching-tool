@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { requireAuth, getAuth } = require('../middleware/auth')
 const pool = require('../db')
-const { getOwnedSquadId, getOwnedSquadIdForStaff } = require('./_squad')
+const { getOwnedSquadId, getOwnedSquadIdForStaff, getOwnedSquadIdForCoach } = require('./_squad')
 
 const router = Router()
 
@@ -42,12 +42,12 @@ router.get('/:id', requireAuth(), async (req, res) => {
   }
 })
 
-// POST /api/tactics — create a new tactic (staff only; players keep the
+// POST /api/tactics — create a new tactic (coach only; players keep the
 // read-only GET view)
 router.post('/', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req)
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId)
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId)
     if (!squadId) return res.status(404).json({ error: 'Squad not found' })
 
     const { name, description, frames } = req.body
@@ -70,11 +70,11 @@ router.post('/', requireAuth(), async (req, res) => {
   }
 })
 
-// PATCH /api/tactics/:id — update a tactic (staff only)
+// PATCH /api/tactics/:id — update a tactic (coach only)
 router.patch('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req)
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId)
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId)
     if (!squadId) return res.status(404).json({ error: 'Squad not found' })
 
     const { name, description, frames } = req.body
@@ -99,11 +99,11 @@ router.patch('/:id', requireAuth(), async (req, res) => {
   }
 })
 
-// DELETE /api/tactics/:id — delete a tactic (staff only)
+// DELETE /api/tactics/:id — delete a tactic (coach only)
 router.delete('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req)
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId)
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId)
     if (!squadId) return res.status(404).json({ error: 'Squad not found' })
 
     const result = await pool.query(

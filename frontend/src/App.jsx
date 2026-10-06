@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import Welcome from './pages/Welcome'
 import SignInPage from './pages/SignInPage'
 import SignUpPage from './pages/SignUpPage'
+import RoleSelect from './pages/RoleSelect'
 import Dashboard from './pages/Dashboard'
 import Roster from './pages/Roster'
 import AthleteStats from './pages/AthleteStats'
@@ -27,6 +28,7 @@ function App() {
     <ConfirmProvider>
       <Routes>
         <Route path="/" element={<Welcome />} />
+        <Route path="/role-select" element={<RoleSelect />} />
         <Route
           path="/dashboard"
           element={

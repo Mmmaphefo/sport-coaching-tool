@@ -42,6 +42,25 @@ router.get('/me', requireAuth(), async (req, res) => {
   }
 });
 
+// PATCH /api/account/role — set the user's role (coach, assistant, athlete).
+router.patch('/role', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkId } = getAuth(req);
+    const userId = await getOrCreateUserId(pool, clerkId);
+    const { role } = req.body;
+
+    if (!['coach', 'assistant', 'athlete'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, userId]);
+    res.json({ role });
+  } catch (err) {
+    console.error('Error updating role:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // DELETE /api/account/me — delete the logged-in user and all owned data.
 router.delete('/me', requireAuth(), async (req, res) => {
   try {

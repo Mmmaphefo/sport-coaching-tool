@@ -112,11 +112,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  text-align: left;
+  text-align: center;
   padding: 24px 40px;
-  max-width: 640px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .welcome-eyebrow {
@@ -141,7 +142,7 @@
   margin: 0 0 22px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 2px;
 }
 
@@ -164,12 +165,117 @@
 }
 
 .welcome-subtitle {
-  max-width: 560px;
+  max-width: 600px;
   font-size: 16px;
   line-height: 1.65;
   color: rgba(var(--color-silver-rgb), 0.92);
   margin: 0 0 38px;
   animation: welcome-reveal 0.7s ease-out 0.6s both;
+}
+
+/* ---- Role selection cards ---- */
+
+.welcome-role-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  max-width: 1000px;
+  width: 100%;
+  margin: 0 auto 2rem;
+  animation: welcome-reveal 0.7s ease-out 0.75s both;
+}
+
+.role-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  color: #ffffff;
+  backdrop-filter: blur(10px);
+  font-family: inherit;
+}
+
+.role-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 215, 0, 0.5);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+.role-card-selected {
+  background: rgba(255, 215, 0, 0.1);
+  border-color: #ffd700;
+  box-shadow: 0 0 0 2px #ffd700, 0 12px 24px rgba(255, 215, 0, 0.2);
+}
+
+.role-card-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 215, 0, 0.15);
+  border-radius: 50%;
+  color: #ffd700;
+}
+
+.role-card-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.role-card h3 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0 0 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-display);
+}
+
+.role-card p {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ---- Invite link form ---- */
+
+.invite-link-form {
+  display: flex;
+  gap: 1rem;
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  animation: welcome-reveal 0.7s ease-out 0.9s both;
+}
+
+.invite-link-input {
+  flex: 1;
+  padding: 15px 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  font-size: 16px;
+  font-family: inherit;
+  backdrop-filter: blur(6px);
+  transition: border-color 0.16s ease;
+}
+
+.invite-link-input:focus {
+  outline: none;
+  border-color: var(--color-lime);
+}
+
+.invite-link-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .welcome-actions {

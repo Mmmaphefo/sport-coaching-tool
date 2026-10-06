@@ -116,7 +116,7 @@ function PublicLanding() {
                 <a href="#pl-teams" className="pl-hero-cta">
                   Browse teams
                 </a>
-                <Link to="/sign-up" className="pl-hero-cta-secondary">Coach? Sign up</Link>
+                <Link to="/sign-in" className="pl-hero-cta-secondary">Sign in</Link>
               </div>
             </div>
           </div>

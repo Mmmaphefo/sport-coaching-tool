@@ -44,15 +44,15 @@ A full-stack web application for sports coaches and assistants to manage squads,
 - Squad gender (male/female) with matchmaking filters for open leagues
 
 ### Coaching Tools (Sprint 3)
-- Athlete & squad comparison page with BMI and form
-- Tactics board with saved frames and the sessions / drill library (auto-generated from tactical goals)
+- Athlete comparison page with BMI and form
+- Tactics board with saved frames and the sessions / drill library (filterable by tactical goals, age group, duration, and phase)
 - Ratings-weighted match simulation (Quick Sim / Simulate Match) for events and fixtures
 - Coach-only stat overrides with an audit trail, merged over derived stats
 - Venue map on Mapbox's dark navigation basemap — search the venue by address,
   drop a high-accuracy GPS pin, fine-tune by dragging, copy the exact
   coordinates, and centre the weather widget on the pin (OpenStreetMap
   fallback when no Mapbox token is set)
-- Offline logging queue with idempotent replay for weak-signal pitch-side use
+- Offline logging queue with basic idempotent replay (client_id deduplication) for weak-signal pitch-side use
 
 ### Public Pages (Sprint 3)
 - Public squad pages and a public landing directory of squads with live events
