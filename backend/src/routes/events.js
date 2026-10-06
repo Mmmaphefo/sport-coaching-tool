@@ -386,6 +386,12 @@ router.post('/', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'Cannot schedule an event in the past' });
     }
 
+    // Don't allow scheduling more than 2 years in the future
+    const twoYearsFromNow = Date.now() + (2 * 365 * 24 * 60 * 60 * 1000);
+    if (new Date(timestamp).getTime() > twoYearsFromNow) {
+      return res.status(400).json({ error: 'Cannot schedule an event more than 2 years in the future' });
+    }
+
     // Optional map pin — the form can pass the coordinates the coach dropped
     // on the venue map.
     const coordError = coordErrorFor(location_lat, location_lng);
@@ -576,6 +582,17 @@ router.patch('/:id', requireAuth(), async (req, res) => {
 
     const { title, opponent, event_type, type, event_date, event_time, location, status, duration_minutes, location_lat, location_lng } = req.body;
     const timestamp = event_date ? (event_time ? `${event_date}T${event_time}` : event_date) : null;
+
+    // Validate date if provided - don't allow past dates or dates too far in future
+    if (timestamp) {
+      if (new Date(timestamp).getTime() < Date.now() - 60 * 1000) {
+        return res.status(400).json({ error: 'Cannot schedule an event in the past' });
+      }
+      const twoYearsFromNow = Date.now() + (2 * 365 * 24 * 60 * 60 * 1000);
+      if (new Date(timestamp).getTime() > twoYearsFromNow) {
+        return res.status(400).json({ error: 'Cannot schedule an event more than 2 years in the future' });
+      }
+    }
 
     // A match can only be turned live once enough players are confirmed
     // available — the Start live button refuses exactly where the auto-start
@@ -1099,6 +1116,26 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     const { assist_athlete_id, substitute_athlete_id } = req.body;
     const actionType = action_type.trim();
+
+    // Validation: a player can only receive one red card per match
+    if (actionType === 'red_card' && athlete_id) {
+      const existingRedCards = await pool.query(
+        `SELECT COUNT(*) as count FROM log_entries 
+         WHERE event_id = $1 AND athlete_id = $2 AND action_type = 'red_card' AND deleted_at IS NULL`,
+        [event.id, athlete_id]
+      );
+      if (Number(existingRedCards.rows[0].count) >= 1) {
+        return res.status(400).json({ error: 'Player already has a red card in this match' });
+      }
+    }
+
+    // Validation: minute must be reasonable (0-120 for extra time)
+    if (minute !== undefined && minute !== null) {
+      const minuteNum = Number(minute);
+      if (!Number.isFinite(minuteNum) || minuteNum < 0 || minuteNum > 120) {
+        return res.status(400).json({ error: 'Minute must be between 0 and 120' });
+      }
+    }
 
     // Lineups gate live logging: the starting XI must exist first, and
     // benched players can only be booked.

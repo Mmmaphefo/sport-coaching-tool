@@ -404,6 +404,26 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
     const { assist_athlete_id, substitute_athlete_id } = req.body;
     const actionType = action_type.trim();
 
+    // Validation: a player can only receive one red card per match
+    if (actionType === 'red_card' && athlete_id) {
+      const existingRedCards = await pool.query(
+        `SELECT COUNT(*) as count FROM log_entries 
+         WHERE fixture_id = $1 AND athlete_id = $2 AND action_type = 'red_card' AND deleted_at IS NULL`,
+        [fixture.id, athlete_id]
+      );
+      if (Number(existingRedCards.rows[0].count) >= 1) {
+        return res.status(400).json({ error: 'Player already has a red card in this match' });
+      }
+    }
+
+    // Validation: minute must be reasonable (0-120 for extra time)
+    if (minute !== undefined && minute !== null) {
+      const minuteNum = Number(minute);
+      if (!Number.isFinite(minuteNum) || minuteNum < 0 || minuteNum > 120) {
+        return res.status(400).json({ error: 'Minute must be between 0 and 120' });
+      }
+    }
+
     // Lineups gate live logging: the starting XI for both teams must exist
     // first, and benched players can only be booked.
     const lineupRows = await getLineup(pool, { fixtureId: fixture.id });

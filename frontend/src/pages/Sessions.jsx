@@ -83,12 +83,7 @@ function Sessions() {
 
   const isAthlete = role === 'athlete'
 
-  useEffect(() => {
-    loadDrills()
-    apiRequest('/api/account/me', { getToken })
-      .then((me) => setRole(me.role))
-      .catch(() => {})
-  }, [getToken])
+  const loadDrills = useCallback(async () => {
     try {
       const params = new URLSearchParams()
       if (filterGoal) params.set('tactical_goal', filterGoal)
@@ -104,6 +99,13 @@ function Sessions() {
       setLoading(false)
     }
   }, [getToken, filterGoal, filterAge, filterDuration, filterPhase])
+
+  useEffect(() => {
+    loadDrills()
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => setRole(me.role))
+      .catch(() => {})
+  }, [getToken])
 
   useEffect(() => {
     loadDrills()
