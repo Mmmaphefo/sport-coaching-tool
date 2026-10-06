@@ -90,19 +90,21 @@ This page contains the sprint backlogs for Kickstat. Story points follow the sca
 | US50 | Public landing page | Directory of public squads with live events | Kgethie | 3 | Done |
 | UI-01 | Full UI redesign | Navy/blue/volt-lime design system, dark theme, Barlow Condensed | Kgotlelelo | 8 | Done |
 | REM-01 | Remove Pro Fixtures | Drop football-data.org integration (justified in Feature Rationale) | Tasmiya | 2 | Done |
-| BUG-01..10 | Sprint 3 bug list | 10 demo bugs (scheduling, timer, weather, auto-start, visibility…) | Mmaphefo | 8 | 9 Done, 1 In Progress (email env config) |
+| BUG-01..10 | Sprint 3 bug list | 10 demo bugs (scheduling, timer, weather, auto-start, visibility…) | Mmaphefo | 8 | 9 Done|
 |  |  | **Total** |  | **72** |  |
+
 
 ## Sprint 4 — Polish, Bug Fixes & Deployment Prep
 
-**Dates:** 13 May 2026 – 22 May 2026 *(planned)*  
+**Dates:** 29 September 2026 – 13 October 2026 *(planned)*  
 **Goal:** Fix post-assessment bugs, improve coverage, and deploy.
 
 | Story ID | Story | Task | Assignee | SP |
 |---|---|---|---|---|
+| MAP-01 | Venue map upgrade | Replace the OSM venue map with Mapbox: dark navigation basemap, address search with geocoding, high-accuracy GPS pin with accuracy display, reverse geocoded address, coordinates on the create form too | Lindo | 5 |
 | FIX-01 | Bug fixes | Address demo feedback | All | 5 |
 | FIX-02 | Coverage push | Add missing tests to reach 75%+ | Kgotlelelo | 5 |
 | DEP-01 | Deploy frontend | Static site deployment | Kgethego | 2 |
 | DEP-02 | Deploy backend | Managed Node.js deployment | Mmaphefo | 3 |
 | DOC-01 | Final docs | Update all documentation | Tasmiya | 3 |
-|  |  | **Total** |  | **18** |
+|  |  | **Total** |  | **23** |

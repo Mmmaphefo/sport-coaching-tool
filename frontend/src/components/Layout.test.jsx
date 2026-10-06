@@ -53,8 +53,8 @@ describe('Layout', () => {
     expect(screen.getByText(/Roster/i)).toBeInTheDocument()
     expect(screen.getByText(/Events/i)).toBeInTheDocument()
     // Await the role fetch so its state update lands inside the test, then
-    // assert the full staff nav — players get "My Stats" instead of the
-    // team-only pages (covered by the player test below).
+    // assert the full staff nav — players get "My Stats" plus read-only
+    // team pages (covered by the player test below).
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'Live' })).toBeInTheDocument()
     })
@@ -72,7 +72,7 @@ describe('Layout', () => {
     })
   })
 
-  it('shows My Stats instead of the team pages for players', async () => {
+  it('shows My Stats and the read-only team pages for players', async () => {
     mocks.apiRequest.mockResolvedValue({ role: 'athlete', athleteId: 8 })
     renderLayout()
 
@@ -87,9 +87,10 @@ describe('Layout', () => {
     })
     expect(screen.getByRole('link', { name: 'My Stats' })).toHaveAttribute('href', '/roster/8')
     expect(screen.queryByRole('link', { name: 'Roster' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Compare' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Tactics' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Sessions' })).not.toBeInTheDocument()
+    // Team pages stay visible for players but open read-only (see Layout.jsx).
+    expect(screen.getByRole('link', { name: 'Compare' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Tactics' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Sessions' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Live' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Events' })).toBeInTheDocument()

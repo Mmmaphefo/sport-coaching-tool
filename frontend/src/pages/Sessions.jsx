@@ -101,6 +101,12 @@ function Sessions() {
   }, [getToken, filterGoal, filterAge, filterDuration, filterPhase])
 
   useEffect(() => {
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => setRole(me.role))
+      .catch(() => {})
+  }, [getToken])
+
+  useEffect(() => {
     loadDrills()
     apiRequest('/api/account/me', { getToken })
       .then((me) => setRole(me.role))
