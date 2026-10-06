@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId, getOwnedSquadIdForStaff, getOrCreateUserId } = require('./_squad');
+const { getOwnedSquadId, getOwnedSquadIdForStaff, getOwnedSquadIdForCoach, getOrCreateUserId } = require('./_squad');
 const {
   getLineup,
   getAthleteSquads,
@@ -386,10 +386,10 @@ router.post('/', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'Cannot schedule an event in the past' });
     }
 
-    // Don't allow scheduling more than 2 years in the future
-    const twoYearsFromNow = Date.now() + (2 * 365 * 24 * 60 * 60 * 1000);
-    if (new Date(timestamp).getTime() > twoYearsFromNow) {
-      return res.status(400).json({ error: 'Cannot schedule an event more than 2 years in the future' });
+    // Don't allow scheduling more than 3 months in the future
+    const threeMonthsFromNow = Date.now() + (3 * 30 * 24 * 60 * 60 * 1000);
+    if (new Date(timestamp).getTime() > threeMonthsFromNow) {
+      return res.status(400).json({ error: 'Cannot schedule an event more than 3 months in the future' });
     }
 
     // Optional map pin — the form can pass the coordinates the coach dropped
@@ -401,7 +401,7 @@ router.post('/', requireAuth(), async (req, res) => {
 
     const { userId: clerkUserId } = getAuth(req);
     const userId = await getOrCreateUserId(pool, clerkUserId);
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
 
     // Training sessions don't need a full squad — but a match, league, or
     // tournament all involve this squad actually fielding a team, so they
@@ -566,11 +566,11 @@ router.get('/:id', requireAuth(), async (req, res) => {
 });
 
 // PATCH /api/events/:id — update event (title, opponent, type, date, location, status).
-// Staff only.
+// Coach only.
 router.patch('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
 
     const check = await pool.query(
       'SELECT id, status, format, squad_id FROM events WHERE id = $1 AND squad_id = $2',
@@ -669,11 +669,11 @@ router.get('/:id/clashes', requireAuth(), async (req, res) => {
 });
 
 // PATCH /api/events/:id/cancel — quick shortcut to mark an event cancelled.
-// Staff only.
+// Coach only.
 router.patch('/:id/cancel', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
 
     const result = await pool.query(
       `UPDATE events SET status = 'cancelled', updated_at = now() WHERE id = $1 AND squad_id = $2 RETURNING *`,
@@ -693,11 +693,11 @@ router.patch('/:id/cancel', requireAuth(), async (req, res) => {
 });
 
 // DELETE /api/events/:id — permanently remove an event and its logs/fixtures.
-// Staff only.
+// Coach only.
 router.delete('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
 
     const result = await pool.query(
       'DELETE FROM events WHERE id = $1 AND squad_id = $2 RETURNING id',
@@ -718,11 +718,11 @@ router.delete('/:id', requireAuth(), async (req, res) => {
   }
 });
 
-// POST /api/events/:id/join — join an open league/tournament. Staff only.
+// POST /api/events/:id/join — join an open league/tournament. Coach only.
 router.post('/:id/join', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
 
     const eventResult = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
     if (eventResult.rows.length === 0) {
@@ -874,11 +874,11 @@ router.get('/:id/stats', requireAuth(), async (req, res) => {
 
 // PUT /api/events/:id/lineup — set the starting XI + bench for a simple
 // event (own squad only; the opponent here is a free-text name). Logging
-// stays locked until a lineup exists. Staff only.
+// stays locked until a lineup exists. Coach only.
 router.put('/:id/lineup', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
 
     const event = await loadEventWithAccess(pool, req.params.id, squadId);
     if (!event) {
