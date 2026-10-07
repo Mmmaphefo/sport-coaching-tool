@@ -65,7 +65,7 @@ function StatNumber({ value, suffix = '' }) {
 }
 
 function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete = false }) {
-  const { event, result, timeline, availability } = detail
+  const { event, result, timeline, availability, penalties } = detail
   const confirm = useConfirm()
   const [logForm, setLogForm] = useState(emptyLogForm)
   const [editingLogId, setEditingLogId] = useState(null)
@@ -339,6 +339,21 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
             <span className="event-result-score">{result.opponent}</span>
             <span className="event-result-label">{event.opponent || 'Opponent'}</span>
           </div>
+        </div>
+      )}
+
+      {penalties && penalties.length > 0 && (
+        <div className="event-penalties">
+          <h3>Penalties & Cards</h3>
+          <ul className="event-penalties-list">
+            {penalties.map((p) => (
+              <li key={p.id} className="event-penalty-item">
+                <span className="event-penalty-minute">{p.minute}'</span>
+                <span className="event-penalty-type">{p.action_type}</span>
+                <span className="event-penalty-player">{p.athlete_name || 'Opponent'}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
