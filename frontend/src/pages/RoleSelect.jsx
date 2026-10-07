@@ -21,7 +21,7 @@ function RoleSelect() {
         if (me.role && me.role !== 'coach') {
           navigate('/dashboard', { replace: true })
         }
-      } catch (err) {
+      } catch {
         // Ignore errors, let user choose
       }
     }
