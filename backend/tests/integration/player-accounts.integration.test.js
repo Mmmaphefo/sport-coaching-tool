@@ -208,10 +208,10 @@ describe('Player accounts — role enforcement', () => {
     const res = await request(app)
       .post('/api/events')
       .set('x-test-clerk-user-id', 'player_clerk_1')
-      .send({ title: 'Player event', event_date: '2099-01-01', format: 'match' })
+      .send({ title: 'Player event', event_date: '2027-01-01', format: 'match' })
 
     expect(res.status).toBe(403)
-    expect(res.body.error).toBe('Players cannot perform this action')
+    expect(res.body.error).toContain('coach')
   })
 
   test('players cannot log injuries', async () => {

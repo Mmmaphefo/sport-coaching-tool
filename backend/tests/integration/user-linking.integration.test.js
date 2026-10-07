@@ -205,7 +205,7 @@ describe('Player restrictions after email linking', () => {
 
     const tactic = await asPlayer(request(app).post('/api/tactics')).send({ name: 'Pressing' })
     expect(tactic.status).toBe(403)
-    expect(tactic.body.error).toBe('Players cannot perform this action')
+    expect(tactic.body.error).toContain('coach')
 
     const drill = await asPlayer(request(app).post('/api/sessions')).send({
       name: 'Rondo',

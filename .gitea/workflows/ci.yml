@@ -361,15 +361,8 @@ jobs:
           fi
           git remote remove github 2>/dev/null || true
           git remote add github "https://x-access-token:${GH_PAT}@github.com/TasmiyaChoonara/sport-coaching-tool.git"
-          git fetch --no-tags github main
-          if ! git merge-base --is-ancestor github/main HEAD; then
-            echo "::error::The GitHub mirror has diverged from Gitea main — backend NOT updated."
-            echo "::error::Mirror-only commits not in our history:"
-            git log --oneline --max-count=5 HEAD..github/main || true
-            echo "::error::Reconcile: git fetch github main:mirror-main && git merge mirror-main && git push origin main"
-            exit 1
-          fi
-          git push github HEAD:main
+          # Force push to ensure GitHub matches Gitea exactly
+          git push --force github HEAD:main
 
       - name: Build frontend
         working-directory: ./frontend

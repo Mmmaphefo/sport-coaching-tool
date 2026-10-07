@@ -186,10 +186,15 @@ describe('US5 — create a match or training event', () => {
       .send({
         title: 'Tuesday Training',
         type: 'training',
-        event_date: '2027-02-25',
+        format: 'training',
+        event_date: '2026-12-01',
         event_time: '17:00',
         location: 'Wits Main Oval',
       })
+
+    if (res.status !== 201) {
+      console.log('Error response:', res.body)
+    }
 
     expect(res.status).toBe(201)
     expect(res.body.title).toBe('Tuesday Training')
@@ -225,7 +230,7 @@ describe('US6 — edit or cancel an event', () => {
   beforeEach(async () => {
     const inserted = await pool.query(
       `INSERT INTO events (squad_id, title, event_type, event_date, created_by)
-       VALUES ($1, 'Saturday Match', 'match', '2026-08-22T10:00:00Z',
+       VALUES ($1, 'Saturday Match', 'match', '2027-08-22T10:00:00Z',
          (SELECT id FROM users WHERE clerk_id = 'test_clerk_user'))
        RETURNING id`,
       [squadId]
@@ -239,7 +244,7 @@ describe('US6 — edit or cancel an event', () => {
     const res = await request(app)
       .patch(`/api/events/${eventId}`)
       .set('x-test-clerk-user-id', 'test_clerk_user')
-      .send({ event_date: '2026-08-22', event_time: '14:00' })
+      .send({ event_date: '2027-08-22', event_time: '14:00' })
 
     expect(res.status).toBe(200)
 

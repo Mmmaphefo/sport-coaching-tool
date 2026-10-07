@@ -25,7 +25,7 @@ describe('Welcome', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/OWN EVERY/)
     expect(screen.getByText(/MOMENT\./i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Get Started/i })).toHaveAttribute('href', '/public')
+    expect(screen.getByRole('link', { name: /Get Started/i })).toHaveAttribute('href', '/role-select')
     expect(screen.getByRole('link', { name: /Sign In/i })).toHaveAttribute('href', '/sign-in')
   })
 

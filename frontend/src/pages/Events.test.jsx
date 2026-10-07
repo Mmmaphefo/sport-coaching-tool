@@ -214,7 +214,7 @@ describe('Events', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Schedule event/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Schedule event/i }))
 
-    fireEvent.change(screen.getByLabelText(/Date & time/i), { target: { value: '2026-10-01T10:00' } })
+    fireEvent.change(screen.getByLabelText(/Date & time/i), { target: { value: '2026-12-01T10:00' } })
     fireEvent.change(screen.getByLabelText(/Opponent/i), { target: { value: 'Riverside FC' } })
 
     // Drop the pin — with jsdom's zero-size canvas a click at (0, 0) resolves
