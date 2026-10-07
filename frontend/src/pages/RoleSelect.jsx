@@ -10,10 +10,14 @@ function RoleSelect() {
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
   const [inviteLink, setInviteLink] = useState('')
+  const [checkedRole, setCheckedRole] = useState(false)
 
   // If user already has a role set, skip to dashboard
   useEffect(() => {
-    if (!isSignedIn) return
+    if (!isSignedIn) {
+      setCheckedRole(true)
+      return
+    }
     
     async function checkRole() {
       try {
@@ -23,6 +27,8 @@ function RoleSelect() {
         }
       } catch {
         // Ignore errors, let user choose
+      } finally {
+        setCheckedRole(true)
       }
     }
     checkRole()
