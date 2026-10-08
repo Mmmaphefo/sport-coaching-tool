@@ -614,21 +614,28 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     const hasCoords = Object.prototype.hasOwnProperty.call(req.body, 'location_lat')
       || Object.prototype.hasOwnProperty.call(req.body, 'location_lng');
 
+    // The same contract applies to the clearable text fields: the edit form
+    // sends an explicit null when a coach deletes the location text or the
+    // opponent/title name. COALESCE can't tell that apart from "field not
+    // sent" (it keeps the stored value for both), so the fields behind a
+    // has-flag are set — to null when null — and the rest keep their value.
+    const hasField = (field) => Object.prototype.hasOwnProperty.call(req.body, field);
+
     const result = await pool.query(
       `UPDATE events
-       SET title = COALESCE($1, title),
-           opponent = COALESCE($2, opponent),
-           event_type = COALESCE($3, event_type),
-           event_date = COALESCE($4, event_date),
-           location = COALESCE($5, location),
-           status = COALESCE($6, status),
-           duration_minutes = COALESCE($7, duration_minutes),
-           location_lat = CASE WHEN $9 THEN $10::double precision ELSE location_lat END,
-           location_lng = CASE WHEN $9 THEN $11::double precision ELSE location_lng END,
-           started_at = CASE WHEN $6 = 'live' THEN COALESCE(started_at, now()) ELSE started_at END,
+       SET title = CASE WHEN $1 THEN $2::text ELSE title END,
+           opponent = CASE WHEN $3 THEN $4::text ELSE opponent END,
+           event_type = COALESCE($5, event_type),
+           event_date = COALESCE($6, event_date),
+           location = CASE WHEN $7 THEN $8::text ELSE location END,
+           status = COALESCE($9, status),
+           duration_minutes = COALESCE($10, duration_minutes),
+           location_lat = CASE WHEN $12 THEN $13::double precision ELSE location_lat END,
+           location_lng = CASE WHEN $12 THEN $14::double precision ELSE location_lng END,
+           started_at = CASE WHEN $9 = 'live' THEN COALESCE(started_at, now()) ELSE started_at END,
            updated_at = now()
-       WHERE id = $8 RETURNING *`,
-      [title, opponent, type || event_type || null, timestamp, location, status, duration_minutes ? Number(duration_minutes) : null, req.params.id, hasCoords, toCoord(location_lat), toCoord(location_lng)]
+       WHERE id = $11 RETURNING *`,
+      [hasField('title'), title, hasField('opponent'), opponent, type || event_type || null, timestamp, hasField('location'), location, status, duration_minutes ? Number(duration_minutes) : null, req.params.id, hasCoords, toCoord(location_lat), toCoord(location_lng)]
     );
 
     const updated = result.rows[0];

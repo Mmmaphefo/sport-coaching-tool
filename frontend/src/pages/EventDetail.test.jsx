@@ -124,6 +124,28 @@ const simpleMatchPayload = {
   timeline: [],
 }
 
+// A finished match with discipline entries: the penalties section mixes
+// named cards with opponent penalties (athlete_name null → "Opponent").
+const disciplineMatchPayload = {
+  event: {
+    id: 8,
+    event_type: 'match',
+    format: 'match',
+    opponent: 'Riverside FC',
+    title: null,
+    status: 'completed',
+    event_date: '2026-09-10T18:00:00.000Z',
+    location: null,
+    duration_minutes: 90,
+  },
+  result: { squad: 3, opponent: 1 },
+  penalties: [
+    { id: 501, minute: 12, action_type: 'yellow_card', athlete_name: 'Marcus Hale' },
+    { id: 502, minute: 67, action_type: 'penalty', athlete_name: null },
+  ],
+  timeline: [],
+}
+
 function renderAt(path) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -211,5 +233,32 @@ describe('EventDetail', () => {
 
     expect(screen.getByRole('heading', { name: /Timeline/i })).toBeInTheDocument()
     expect(screen.getByText(/No actions logged yet\./i)).toBeInTheDocument()
+  })
+
+  it('lists penalties and cards under the result with readable action names', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/events/8')) return Promise.resolve(disciplineMatchPayload)
+      if (path.startsWith('/api/athletes')) return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    renderAt('/events/8')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Riverside FC/i })).toBeInTheDocument()
+    })
+
+    const section = document.querySelector('.event-penalties')
+    expect(section).not.toBeNull()
+    expect(within(section).getByRole('heading', { name: /Penalties & Cards/i })).toBeInTheDocument()
+
+    // Both entries: the card shows the player's name, the penalty without an
+    // athlete is credited to the opponent; raw action types read as words.
+    expect(within(section).getByText("12'")).toBeInTheDocument()
+    expect(within(section).getByText('yellow card')).toBeInTheDocument()
+    expect(within(section).getByText('Marcus Hale')).toBeInTheDocument()
+    expect(within(section).getByText("67'")).toBeInTheDocument()
+    expect(within(section).getByText('penalty')).toBeInTheDocument()
+    expect(within(section).getByText('Opponent')).toBeInTheDocument()
   })
 })
