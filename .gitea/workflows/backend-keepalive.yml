@@ -1,0 +1,50 @@
+name: Backend keepalive
+
+# Render's free web services spin down after ~15 minutes without inbound
+# traffic, and the first request afterwards pays a ~1 minute cold start.
+# This workflow pings the API's public health endpoint on a schedule so the
+# service stays awake for the next coach who opens KickStat. The endpoint is
+# deliberately cheap and database-free (see backend/src/routes/health.js).
+#
+# Two limitations to know about:
+# - Scheduled workflows only fire from the default branch, so the schedule
+#   goes live when this file lands on main (use the manual "Run workflow"
+#   trigger to test it before then).
+# - The schedule only fires while a runner is registered and online. If the
+#   Actions tab shows no keepalive runs, fall back to any external pinger
+#   pointed at the same URL (see the Deployment section of the README).
+on:
+  schedule:
+    # Every 10 minutes — comfortably inside Render's 15-minute spin-down
+    # window, with margin for scheduler delays. Five fields: minute, hour,
+    # day-of-month, month, day-of-week.
+    - cron: "*/10 * * * *"
+  # Manual trigger ("Run workflow" button) for testing from any branch.
+  workflow_dispatch:
+
+env:
+  # The API's public URL, from frontend/.env.production (VITE_API_URL) —
+  # public by design, the same URL the frontend bundle ships.
+  HEALTH_URL: https://kickstat-api-i2rc.onrender.com/api/health
+
+jobs:
+  keepalive:
+    name: Ping /api/health
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout needed — this job only curls an external URL.
+      - name: Ping the API health endpoint
+        run: |
+          # --max-time 90: a spun-down service takes up to a minute to answer
+          #   its first request — this ping is what wakes it, so give it room.
+          # --retry 2: ride out transient network blips on the runner.
+          # Anything other than HTTP 200 fails the run on purpose: a red
+          # entry in the Actions tab is the visible signal that the API is
+          # genuinely unhealthy (e.g. a bad deploy), rather than the
+          # keepalive quietly succeeding while real requests fail.
+          code="$(curl -sS -o /tmp/health.json -w '%{http_code}' \
+            --max-time 90 --retry 2 "$HEALTH_URL")"
+          echo "GET $HEALTH_URL -> HTTP $code"
+          cat /tmp/health.json || true
+          echo
+          test "$code" = "200"
