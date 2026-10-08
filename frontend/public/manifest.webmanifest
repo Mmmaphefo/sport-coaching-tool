@@ -1,0 +1,30 @@
+{
+  "name": "KickStat",
+  "short_name": "KickStat",
+  "description": "Squad management, match logging and season analytics for school sport.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B1B33",
+  "theme_color": "#0B1B33",
+  "icons": [
+    {
+      "src": "/logo-icon-large.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
