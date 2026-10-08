@@ -8,6 +8,7 @@ import { ACTION_TYPES, formatActionType } from '../lib/actions'
 import { useConfirm } from '../lib/confirm'
 import WeatherWidget from '../components/WeatherWidget'
 import VenueMapEditor from '../components/VenueMapEditor'
+import AddressSearchInput from '../components/AddressSearchInput'
 import ClashBanner from '../components/ClashBanner'
 import RsvpPanel from '../components/RsvpPanel'
 import { useCountUp } from '../lib/useCountUp'
@@ -269,10 +270,17 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
             </label>
             <label>
               Location
-              <input
-                type="text"
+              {/* Same single address entry as the creation form — type,
+                  pick a suggestion, then fine-tune the pin on the map. */}
+              <AddressSearchInput
                 value={eventForm.location}
-                onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                onChange={(text) => setEventForm((f) => ({ ...f, location: text }))}
+                onPick={({ name, lat, lng }) => setEventForm((f) => ({ ...f, location: name, lat, lng }))}
+                proximity={
+                  eventForm.lat !== null && eventForm.lng !== null
+                    ? { lat: Number(eventForm.lat), lng: Number(eventForm.lng) }
+                    : undefined
+                }
               />
             </label>
             <label>
@@ -285,11 +293,12 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
               />
             </label>
             <div className="roster-form-wide">
-              <span className="event-form-map-heading">Pitch pin — click the map to set the venue</span>
+              <span className="event-form-map-heading">Pitch pin — chosen from the address above; drag the pin or the map to fine-tune</span>
               <VenueMapEditor
                 latitude={eventForm.lat}
                 longitude={eventForm.lng}
                 label={eventForm.location}
+                searchable={false}
                 onChange={({ lat, lng }) => setEventForm((f) => ({ ...f, lat, lng }))}
               />
             </div>

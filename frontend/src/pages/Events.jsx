@@ -7,6 +7,7 @@ import { apiRequest } from '../lib/api'
 import { useConfirm } from '../lib/confirm'
 import WeatherWidget from '../components/WeatherWidget'
 import VenueMapEditor from '../components/VenueMapEditor'
+import AddressSearchInput from '../components/AddressSearchInput'
 import './Events.css'
 
 const emptyForm = {
@@ -546,21 +547,30 @@ function Events() {
             </label>
             <label>
               Location
-              <input
-                type="text"
+              {/* The single address entry — suggestions refine as the coach
+                  types; choosing one drops the pin, centres the map and
+                  loads the venue weather below. */}
+              <AddressSearchInput
                 value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                onChange={(text) => setForm((f) => ({ ...f, location: text }))}
+                onPick={({ name, lat, lng }) => setForm((f) => ({ ...f, location: name, lat, lng }))}
+                proximity={
+                  form.lat !== null && form.lng !== null
+                    ? { lat: Number(form.lat), lng: Number(form.lng) }
+                    : undefined
+                }
                 placeholder="e.g. Wits Main Oval, Johannesburg"
               />
             </label>
           </div>
 
           <div className="roster-form-wide">
-            <span className="event-form-map-heading">Pitch pin — search the address, use GPS, or click the map</span>
+            <span className="event-form-map-heading">Pitch pin — chosen from the address above; drag the pin or the map to fine-tune</span>
             <VenueMapEditor
               latitude={form.lat}
               longitude={form.lng}
               label={form.location}
+              searchable={false}
               onChange={({ lat, lng }) => setForm((f) => ({ ...f, lat, lng }))}
               onAddress={(address) => setForm((f) => ({ ...f, location: address }))}
             />

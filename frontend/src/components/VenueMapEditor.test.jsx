@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import VenueMapEditor from './VenueMapEditor'
 
 // jsdom has no layout, so the canvas reports a zero size (no tiles, no
@@ -117,6 +118,72 @@ describe('VenueMapEditor (OpenStreetMap fallback)', () => {
     fireEvent.pointerUp(el, { pointerId: 1, clientX: 520, clientY: 260 })
 
     expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('moves the view when dragged — the visible tiles change', () => {
+    mockCanvasSize()
+    render(<VenueMapEditor onChange={vi.fn()} />)
+    const before = tileSrcs()
+
+    const el = canvas()
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: 400, clientY: 200 })
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: 600, clientY: 200 })
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: 600, clientY: 200 })
+
+    expect(tileSrcs().join('|')).not.toBe(before.join('|'))
+  })
+
+  it('after panning, the same screen click lands on a different place', () => {
+    mockCanvasSize()
+    const onChange = vi.fn()
+    render(<VenueMapEditor onChange={onChange} />)
+
+    const el = canvas()
+    // Click centre → the default Johannesburg view.
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: 400, clientY: 200 })
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: 400, clientY: 200 })
+    const first = onChange.mock.calls[0][0]
+
+    // Pan right by 200px, then click the canvas centre again.
+    fireEvent.pointerDown(el, { pointerId: 2, clientX: 400, clientY: 200 })
+    fireEvent.pointerMove(el, { pointerId: 2, clientX: 600, clientY: 200 })
+    fireEvent.pointerUp(el, { pointerId: 2, clientX: 600, clientY: 200 })
+    fireEvent.pointerDown(el, { pointerId: 3, clientX: 400, clientY: 200 })
+    fireEvent.pointerUp(el, { pointerId: 3, clientX: 400, clientY: 200 })
+    const second = onChange.mock.calls[1][0]
+
+    expect(second.lng).not.toBeCloseTo(first.lng, 3)
+  })
+
+  it('zooms in and out with the mouse wheel', () => {
+    mockCanvasSize()
+    render(<VenueMapEditor onChange={vi.fn()} />)
+    const el = canvas()
+
+    // Raw native dispatch — wrap in act so the state update flushes before
+    // the tile assertions.
+    act(() => {
+      el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 400, clientY: 200, deltaY: -100 }))
+    })
+    expect(tileSrcs().some((src) => src.startsWith('https://tile.openstreetmap.org/13/'))).toBe(true)
+
+    act(() => {
+      el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 400, clientY: 200, deltaY: 100 }))
+    })
+    expect(tileSrcs().some((src) => src.startsWith('https://tile.openstreetmap.org/12/'))).toBe(true)
+  })
+
+  it('ignores small trackpad wheel deltas until they add up to a step', () => {
+    mockCanvasSize()
+    render(<VenueMapEditor onChange={vi.fn()} />)
+    const el = canvas()
+
+    act(() => {
+      for (let i = 0; i < 3; i += 1) {
+        el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 400, clientY: 200, deltaY: -20 }))
+      }
+    })
+    expect(tileSrcs().every((src) => src.startsWith('https://tile.openstreetmap.org/12/'))).toBe(true)
   })
 
   it('drags the existing pin to fine-tune it', () => {
@@ -306,6 +373,14 @@ describe('VenueMapEditor (Mapbox mode)', () => {
     expect(screen.getByText(/±12 m/)).toBeInTheDocument()
   })
 
+  it('hides the built-in search box when the parent form provides its own', () => {
+    mockCanvasSize()
+    render(<VenueMapEditor searchable={false} onChange={vi.fn()} />)
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    // The map itself is still fully usable.
+    expect(screen.getByRole('application', { name: /venue map/i })).toBeInTheDocument()
+  })
+
   it('shows an error when address search fails', async () => {
     mockCanvasSize()
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
@@ -318,6 +393,87 @@ describe('VenueMapEditor (Mapbox mode)', () => {
 
     await waitFor(() =>
       expect(screen.getByText(/Address search is unavailable/i)).toBeInTheDocument(), { timeout: 3000 }
+    )
+  })
+})
+
+// The ride-hailing picker behaviour: the map follows the pin, not the other
+// way round. A parent harness owns the pin the way Events.jsx does.
+function PinHarness({ onChange }) {
+  const [pin, setPin] = useState({ lat: -26.2041, lng: 28.0473 })
+  return (
+    <VenueMapEditor
+      latitude={pin.lat}
+      longitude={pin.lng}
+      onChange={(next) => {
+        onChange(next)
+        if (next.lat !== null && next.lng !== null) setPin(next)
+      }}
+    />
+  )
+}
+
+describe('VenueMapEditor (view follows the pin)', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.test.123')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ features: [] }),
+    }))
+  })
+
+  it('centres the map when the parent moves the pin (form autocomplete pick)', () => {
+    mockCanvasSize()
+    const { rerender } = render(
+      <VenueMapEditor latitude={-26.2041} longitude={28.0473} onChange={vi.fn()} />
+    )
+
+    // Choosing an address in the form's Location field updates the pin props
+    // from outside the editor — the view must jump to the chosen spot.
+    rerender(<VenueMapEditor latitude={-26.1926} longitude={28.0305} onChange={vi.fn()} />)
+
+    const pin = document.querySelector('.venue-map-editor-pin')
+    expect(pin.style.left).toBe('400px')
+    expect(pin.style.top).toBe('200px')
+  })
+
+  it('the map follows the pin while it is dragged (Uber-style)', () => {
+    mockCanvasSize()
+    const onChange = vi.fn()
+    render(<PinHarness onChange={onChange} />)
+
+    const el = canvas()
+    // Grab the pin at the canvas centre and drag it east in two moves.
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: 400, clientY: 200 })
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: 412, clientY: 200 })
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: 424, clientY: 200 })
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: 424, clientY: 200 })
+
+    // The pin ends centred — the map moved under it, not the other way
+    // round — and the pin itself travelled east.
+    const pin = document.querySelector('.venue-map-editor-pin')
+    expect(pin.style.left).toBe('400px')
+    expect(pin.style.top).toBe('200px')
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(last.lng).toBeGreaterThan(28.0473)
+  })
+
+  it('click-to-place still drops the pin without yanking the view', () => {
+    mockCanvasSize()
+    const onChange = vi.fn()
+    render(<PinHarness onChange={onChange} />)
+
+    const el = canvas()
+    // Click east of the pin; the view must NOT recenter on the new pin.
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: 500, clientY: 200 })
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: 500, clientY: 200 })
+
+    const pin = document.querySelector('.venue-map-editor-pin')
+    // Sub-pixel slop is the pin's coordinate rounding, not a recentered view:
+    // a recenter would put the pin at the canvas centre (400px).
+    expect(Math.abs(parseFloat(pin.style.left) - 500)).toBeLessThan(1)
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ lat: expect.any(Number), lng: expect.any(Number) })
     )
   })
 })
