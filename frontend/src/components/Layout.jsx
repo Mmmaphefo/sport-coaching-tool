@@ -26,6 +26,10 @@ function Layout({ children }) {
           {navItem('/roster', 'Roster')}
           {navItem('/events', 'Events')}
           {navItem('/live', 'Live')}
+          {navItem('/seasons', 'Seasons')}
+          {navItem('/stats', 'Squad Stats')}
+          {navItem('/friendlies', 'Friendlies')}
+          {navItem('/leaderboard', 'Leaderboard')}
           {navItem('/settings', 'Settings')}
         </nav>
         <div className="app-sidebar-footer">

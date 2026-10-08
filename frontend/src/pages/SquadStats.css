@@ -1,0 +1,56 @@
+.squadstats-charts {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.squadstats-chart-title {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.squadstats-opponents {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 720px;
+}
+
+.squadstats-opponent {
+  border: 1px solid #eee;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.squadstats-opponent summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.squadstats-opponent-name {
+  font-weight: 600;
+}
+
+.squadstats-opponent-record {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.squadstats-opponent-matches {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 1rem 0.75rem;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.squadstats-opponent-matches li {
+  padding: 0.3rem 0;
+  border-top: 1px solid #f5f5f5;
+}

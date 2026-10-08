@@ -197,10 +197,13 @@ router.patch('/:id', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this athlete' });
     }
 
-    const { name, position, squad_number, date_of_birth, contact_info, email } = req.body;
+    const { name, position, squad_number, date_of_birth, contact_info, email, rating } = req.body;
 
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: 'Invalid email address' });
+    }
+    if (rating !== undefined && rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 100)) {
+      return res.status(400).json({ error: 'Rating must be an integer between 1 and 100' });
     }
 
     const result = await pool.query(
@@ -211,9 +214,10 @@ router.patch('/:id', requireAuth(), async (req, res) => {
            date_of_birth = COALESCE($4, date_of_birth),
            contact_info = COALESCE($5, contact_info),
            email = COALESCE($6, email),
+           rating = COALESCE($7, CASE WHEN $8 THEN NULL ELSE rating END),
            updated_at = now()
-       WHERE id = $7 RETURNING *`,
-      [name, position, squad_number, date_of_birth, contact_info, email || null, req.params.id]
+       WHERE id = $9 RETURNING *`,
+      [name, position, squad_number, date_of_birth, contact_info, email || null, rating ?? null, rating === null, req.params.id]
     );
 
     res.json(result.rows[0]);
@@ -246,6 +250,127 @@ router.delete('/:id', requireAuth(), async (req, res) => {
     const status = err.status || 500;
     const message = (status === 403 || status === 409) ? err.message : 'Server error';
     res.status(status).json({ error: message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T21 support: injury records. The lineup suggestion treats an athlete as
+// unavailable while today falls between started_on and expected_return
+// (or indefinitely, if no return date), until the record is cleared.
+// ---------------------------------------------------------------------------
+
+// GET /api/athletes/:id/injuries — injury history
+router.get('/:id/injuries', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const athleteCheck = await pool.query(
+      'SELECT id FROM athletes WHERE id = $1 AND squad_id = $2',
+      [req.params.id, squadId]
+    );
+    if (athleteCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Athlete not found' });
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM athlete_injuries WHERE athlete_id = $1 ORDER BY started_on DESC',
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching injuries:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/athletes/:id/injuries — record an injury (coach only)
+router.post('/:id/injuries', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+
+    const athleteCheck = await pool.query(
+      'SELECT id FROM athletes WHERE id = $1 AND squad_id = $2',
+      [req.params.id, squadId]
+    );
+    if (athleteCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Athlete not found' });
+    }
+
+    const { started_on, expected_return, note } = req.body;
+    if (!started_on) {
+      return res.status(400).json({ error: 'started_on is required' });
+    }
+    if (expected_return && new Date(expected_return) < new Date(started_on)) {
+      return res.status(400).json({ error: 'expected_return cannot be before started_on' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO athlete_injuries (athlete_id, started_on, expected_return, note)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.params.id, started_on, expected_return || null, note || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error recording injury:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /api/athletes/:id/injuries/:injuryId — update or clear an injury
+router.patch('/:id/injuries/:injuryId', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+
+    const check = await pool.query(
+      `SELECT i.id FROM athlete_injuries i
+       JOIN athletes a ON a.id = i.athlete_id
+       WHERE i.id = $1 AND i.athlete_id = $2 AND a.squad_id = $3`,
+      [req.params.injuryId, req.params.id, squadId]
+    );
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Injury record not found' });
+    }
+
+    const { expected_return, note, cleared } = req.body;
+    const result = await pool.query(
+      `UPDATE athlete_injuries
+       SET expected_return = COALESCE($1, expected_return),
+           note = COALESCE($2, note),
+           cleared_at = CASE WHEN $3 THEN CURRENT_DATE ELSE cleared_at END,
+           updated_at = now()
+       WHERE id = $4 RETURNING *`,
+      [expected_return || null, note || null, cleared === true, req.params.injuryId]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating injury:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/athletes/:id/injuries/:injuryId — remove an injury record
+router.delete('/:id/injuries/:injuryId', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+
+    const result = await pool.query(
+      `DELETE FROM athlete_injuries i
+       USING athletes a
+       WHERE i.athlete_id = a.id AND i.id = $1 AND i.athlete_id = $2 AND a.squad_id = $3
+       RETURNING i.id`,
+      [req.params.injuryId, req.params.id, squadId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Injury record not found' });
+    }
+    res.sendStatus(204);
+  } catch (err) {
+    console.error('Error deleting injury:', err.message);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

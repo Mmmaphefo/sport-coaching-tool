@@ -11,6 +11,9 @@ const fixturesRouter = require('./routes/fixtures');
 const invitesRouter = require('./routes/invites');
 const accountRouter = require('./routes/account');
 const weatherRouter = require('./routes/weather');
+const seasonsRouter = require('./routes/seasons');
+const friendliesRouter = require('./routes/friendlies');
+const leaderboardRouter = require('./routes/leaderboard');
 const { sendEventReminders } = require('./lib/reminders');
 
 const app = express();
@@ -29,6 +32,9 @@ app.use('/api/fixtures', fixturesRouter);
 app.use('/api/invites', invitesRouter);
 app.use('/api/account', accountRouter);
 app.use('/api/weather', weatherRouter);
+app.use('/api/seasons', seasonsRouter);
+app.use('/api/friendlies', friendliesRouter);
+app.use('/api/leaderboard', leaderboardRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });

@@ -10,6 +10,10 @@ import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Live from './pages/Live'
 import LiveMatch from './pages/LiveMatch'
+import Seasons from './pages/Seasons'
+import SquadStats from './pages/SquadStats'
+import Friendlies from './pages/Friendlies'
+import Leaderboard from './pages/Leaderboard'
 import OnboardingGuard from './components/OnboardingGuard'
 import './App.css'
 
@@ -90,6 +94,30 @@ function App() {
         }
       />
       <Route
+        path="/seasons"
+        element={
+          <OnboardingGuard>
+            <Seasons />
+          </OnboardingGuard>
+        }
+      />
+      <Route
+        path="/stats"
+        element={
+          <OnboardingGuard>
+            <SquadStats />
+          </OnboardingGuard>
+        }
+      />
+      <Route
+        path="/friendlies"
+        element={
+          <OnboardingGuard>
+            <Friendlies />
+          </OnboardingGuard>
+        }
+      />
+      <Route
         path="/settings"
         element={
           <OnboardingGuard>
@@ -98,6 +126,7 @@ function App() {
         }
       />
       <Route path="/invite/:token" element={<InviteAccept />} />
+      <Route path="/leaderboard" element={<Leaderboard />} />
     </Routes>
   )
 }

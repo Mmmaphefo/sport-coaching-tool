@@ -1,7 +1,9 @@
 const express = require('express');
 const { Pool } = require('pg');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId, getOrCreateUserId } = require('./_squad');
+const { getOwnedSquadId, getOrCreateUserId, getOwnedSquadIdForCoach } = require('./_squad');
+const { buildMatchSummary } = require('../lib/summary');
+const { buildCsv, buildPdf } = require('../lib/reports');
 
 const router = express.Router();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -249,6 +251,7 @@ router.post('/', requireAuth(), async (req, res) => {
       duration_minutes,
       format,
       required_teams,
+      season_id,
     } = req.body;
 
     if (!event_date) {
@@ -274,9 +277,22 @@ router.post('/', requireAuth(), async (req, res) => {
     const userId = await getOrCreateUserId(pool, clerkUserId);
     const squadId = await getOwnedSquadId(pool, clerkUserId);
 
+    // Optional season tag (T17) — must belong to this squad.
+    let validSeasonId = null;
+    if (season_id) {
+      const seasonCheck = await pool.query(
+        'SELECT id FROM seasons WHERE id = $1 AND squad_id = $2',
+        [season_id, squadId]
+      );
+      if (seasonCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Unknown season for this squad' });
+      }
+      validSeasonId = season_id;
+    }
+
     const result = await pool.query(
-      `INSERT INTO events (squad_id, title, opponent, event_type, format, required_teams, event_date, location, duration_minutes, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      `INSERT INTO events (squad_id, title, opponent, event_type, format, required_teams, season_id, event_date, location, duration_minutes, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         squadId,
         title ? title.trim() : null,
@@ -284,6 +300,7 @@ router.post('/', requireAuth(), async (req, res) => {
         type || event_type || 'match',
         eventFormat,
         isLeague ? Number(required_teams) : null,
+        validSeasonId,
         timestamp,
         location ? location.trim() : null,
         duration_minutes ? Number(duration_minutes) : 90,
@@ -310,6 +327,442 @@ router.post('/', requireAuth(), async (req, res) => {
     res.status(201).json(event);
   } catch (err) {
     console.error('Error creating event:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T23 support: clash detection. Returns pairs of the squad's non-cancelled
+// events whose time windows overlap. Optional ?from=&to= bounds the scan.
+// (Registered before /:id so "clashes" isn't swallowed as an event id.)
+// ---------------------------------------------------------------------------
+router.get('/clashes', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const params = [squadId];
+    let rangeFilter = '';
+    if (req.query.from && req.query.to) {
+      params.push(req.query.from, req.query.to);
+      rangeFilter = `AND event_date::date BETWEEN $${params.length - 1} AND $${params.length}`;
+    }
+
+    const result = await pool.query(
+      `SELECT id, title, opponent, event_date, duration_minutes, status
+       FROM events
+       WHERE squad_id = $1 AND status IN ('scheduled', 'live', 'completed') ${rangeFilter}
+       ORDER BY event_date`,
+      params
+    );
+
+    const events = result.rows;
+    const clashes = [];
+    for (let i = 0; i < events.length; i++) {
+      for (let j = i + 1; j < events.length; j++) {
+        const aStart = new Date(events[i].event_date).getTime();
+        const aEnd = aStart + (events[i].duration_minutes || 90) * 60 * 1000;
+        const bStart = new Date(events[j].event_date).getTime();
+        const bEnd = bStart + (events[j].duration_minutes || 90) * 60 * 1000;
+        if (aStart < bEnd && bStart < aEnd) {
+          clashes.push({ a: events[i], b: events[j] });
+        }
+      }
+    }
+
+    res.json({ clash_count: clashes.length, clashes });
+  } catch (err) {
+    console.error('Error detecting clashes:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T21: RSVPs — coach records each athlete's availability for an event.
+// ---------------------------------------------------------------------------
+
+// GET /api/events/:id/rsvps — all recorded RSVPs for the event
+router.get('/:id/rsvps', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const event = await loadEventWithAccess(pool, req.params.id, squadId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const result = await pool.query(
+      `SELECT r.*, a.name AS athlete_name
+       FROM event_rsvps r
+       JOIN athletes a ON a.id = r.athlete_id
+       WHERE r.event_id = $1
+       ORDER BY a.name`,
+      [event.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching RSVPs:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/events/:id/rsvps — upsert one RSVP ({ athlete_id, status, note })
+// or a batch ({ rsvps: [{ athlete_id, status, note }, ...] }). Coach only.
+const RSVP_STATUSES = new Set(['yes', 'no', 'maybe']);
+
+router.put('/:id/rsvps', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+
+    const event = await loadEventWithAccess(pool, req.params.id, squadId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const entries = Array.isArray(req.body.rsvps)
+      ? req.body.rsvps
+      : [{ athlete_id: req.body.athlete_id, status: req.body.status, note: req.body.note }];
+
+    if (entries.length === 0 || entries.some((e) => !e.athlete_id)) {
+      return res.status(400).json({ error: 'athlete_id is required for each RSVP' });
+    }
+    for (const entry of entries) {
+      if (!RSVP_STATUSES.has(entry.status)) {
+        return res.status(400).json({ error: "status must be 'yes', 'no' or 'maybe'" });
+      }
+    }
+
+    const athleteIds = entries.map((e) => e.athlete_id);
+    const owned = await pool.query(
+      `SELECT id FROM athletes WHERE id = ANY($1::int[]) AND squad_id = $2`,
+      [athleteIds, squadId]
+    );
+    if (owned.rows.length !== new Set(athleteIds).size) {
+      return res.status(400).json({ error: 'All athletes must belong to this squad' });
+    }
+
+    const saved = [];
+    for (const entry of entries) {
+      const upsert = await pool.query(
+        `INSERT INTO event_rsvps (event_id, athlete_id, status, note, updated_at)
+         VALUES ($1, $2, $3, $4, now())
+         ON CONFLICT (event_id, athlete_id)
+         DO UPDATE SET status = EXCLUDED.status,
+                       note = EXCLUDED.note,
+                       updated_at = now()
+         RETURNING *`,
+        [event.id, entry.athlete_id, entry.status, entry.note || null]
+      );
+      saved.push(upsert.rows[0]);
+    }
+
+    res.json(saved);
+  } catch (err) {
+    console.error('Error saving RSVPs:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T21: Lineup suggestion — ranks available athletes by coach rating + recent
+// form, filters out injured and RSVP'd-out players, and explains every choice.
+// ---------------------------------------------------------------------------
+router.get('/:id/lineup-suggestion', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const event = await loadEventWithAccess(pool, req.params.id, squadId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const squadSize = Number(req.query.size) || 11;
+    if (squadSize < 1 || squadSize > 30) {
+      return res.status(400).json({ error: 'size must be between 1 and 30' });
+    }
+
+    const athletesResult = await pool.query(
+      'SELECT id, name, position, squad_number, rating FROM athletes WHERE squad_id = $1 ORDER BY name',
+      [squadId]
+    );
+    const athletes = athletesResult.rows;
+    if (athletes.length === 0) {
+      return res.json({
+        starters: [],
+        bench: [],
+        unavailable: [],
+        doubtful: [],
+        note: 'No athletes in the squad yet.',
+      });
+    }
+
+    // Injuries overlapping today
+    const injuries = await pool.query(
+      `SELECT athlete_id, expected_return, note
+       FROM athlete_injuries
+       WHERE started_on <= CURRENT_DATE
+         AND cleared_at IS NULL
+         AND (expected_return IS NULL OR expected_return >= CURRENT_DATE)
+         AND athlete_id = ANY($1::int[])`,
+      [athletes.map((a) => a.id)]
+    );
+    const injuredMap = new Map(injuries.rows.map((r) => [r.athlete_id, r]));
+
+    // RSVPs
+    const rsvps = await pool.query(
+      'SELECT athlete_id, status, note FROM event_rsvps WHERE event_id = $1',
+      [event.id]
+    );
+    const rsvpMap = new Map(rsvps.rows.map((r) => [r.athlete_id, r]));
+
+    // Recent form: goals + assists across the athlete's last 5 completed
+    // matches (any event type that has completed), most recent first.
+    const form = await pool.query(
+      `WITH recent AS (
+         SELECT DISTINCT l.event_id, e.event_date
+         FROM log_entries l
+         JOIN events e ON e.id = l.event_id
+         WHERE e.squad_id = $1 AND e.status = 'completed' AND l.deleted_at IS NULL
+         ORDER BY e.event_date DESC
+         LIMIT 5
+       )
+       SELECT l.athlete_id,
+              SUM(CASE WHEN l.action_type = 'goal' THEN l.value ELSE 0 END) AS goals,
+              SUM(CASE WHEN l.action_type = 'assist' THEN l.value ELSE 0 END) AS assists
+       FROM log_entries l
+       JOIN recent ON recent.event_id = l.event_id
+       WHERE l.deleted_at IS NULL AND l.athlete_id = ANY($2::int[])
+       GROUP BY l.athlete_id`,
+      [squadId, athletes.map((a) => a.id)]
+    );
+    const formMap = new Map(
+      form.rows.map((r) => [r.athlete_id, { goals: Number(r.goals), assists: Number(r.assists) }])
+    );
+
+    const unavailable = [];
+    const doubtful = [];
+    const available = [];
+
+    for (const athlete of athletes) {
+      const injury = injuredMap.get(athlete.id);
+      const rsvp = rsvpMap.get(athlete.id);
+      const formStats = formMap.get(athlete.id) || { goals: 0, assists: 0 };
+
+      if (injury) {
+        unavailable.push({
+          athlete,
+          reason: `Injured${injury.expected_return ? ` (expected return ${injury.expected_return})` : ''}${injury.note ? ` — ${injury.note}` : ''}`,
+        });
+        continue;
+      }
+      if (rsvp && rsvp.status === 'no') {
+        unavailable.push({ athlete, reason: `Marked unavailable${rsvp.note ? ` — ${rsvp.note}` : ''}` });
+        continue;
+      }
+
+      // score = coach rating (neutral 50 if unrated) + capped form bonus
+      const rating = athlete.rating ?? 50;
+      const formBonus = Math.min(20, formStats.goals * 3 + formStats.assists * 2);
+      const entry = {
+        athlete,
+        rating,
+        form: formStats,
+        score: rating + formBonus,
+        reason: `Rating ${rating} · form: ${formStats.goals} goal${formStats.goals === 1 ? '' : 's'}, ${formStats.assists} assist${formStats.assists === 1 ? '' : 's'} in last 5`,
+      };
+      if (rsvp && rsvp.status === 'maybe') {
+        doubtful.push({ ...entry, reason: `${entry.reason} · RSVP: maybe${rsvp.note ? ` — ${rsvp.note}` : ''}` });
+      }
+      available.push(entry);
+    }
+
+    available.sort((a, b) => b.score - a.score);
+    const starters = available.slice(0, squadSize);
+    const bench = available.slice(squadSize);
+
+    res.json({
+      starters,
+      bench,
+      unavailable,
+      doubtful,
+      generated_for: { event_id: event.id, size: squadSize },
+    });
+  } catch (err) {
+    console.error('Error building lineup suggestion:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T22: Auto post-match summary & highlights
+// ---------------------------------------------------------------------------
+router.get('/:id/summary', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const event = await loadEventWithAccess(pool, req.params.id, squadId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (LEAGUE_FORMATS.has(event.format)) {
+      return res.status(400).json({ error: 'Use /api/fixtures/:id/summary for league fixtures' });
+    }
+
+    const logsResult = await pool.query(
+      `SELECT l.*, a.name AS athlete_name
+       FROM log_entries l
+       LEFT JOIN athletes a ON a.id = l.athlete_id
+       WHERE l.event_id = $1 AND l.deleted_at IS NULL
+       ORDER BY l.minute NULLS LAST, l.logged_at`,
+      [event.id]
+    );
+    const logs = logsResult.rows.map((l) => ({ ...l, side: l.athlete_id != null ? 'us' : 'them' }));
+
+    const gf = logs
+      .filter((l) => l.is_scoring && l.side === 'us')
+      .reduce((sum, l) => sum + l.value, 0);
+    const ga = logs
+      .filter((l) => l.is_scoring && l.side === 'them')
+      .reduce((sum, l) => sum + l.value, 0);
+
+    const summary = buildMatchSummary(logs, {
+      squadName: 'Squad',
+      opponent: event.opponent || 'the opposition',
+      gf,
+      ga,
+    });
+
+    res.json({ event_id: event.id, status: event.status, ...summary });
+  } catch (err) {
+    console.error('Error building event summary:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T20: Match report exports (CSV / PDF)
+// ---------------------------------------------------------------------------
+
+function matchReportRows(event, gf, ga, timeline) {
+  const rows = [
+    ['Match Report'],
+    ['Opponent', event.opponent || 'Training session'],
+    ['Date', event.event_date ? new Date(event.event_date).toISOString() : ''],
+    ['Location', event.location || ''],
+    ['Status', event.status],
+    ['Final Score', `${gf}-${ga}`],
+    [],
+    ['Minute', 'Action', 'Athlete', 'Side', 'Value', 'Notes'],
+  ];
+  for (const l of timeline) {
+    rows.push([
+      l.minute ?? '',
+      l.action_type,
+      l.athlete_name || (l.side === 'us' ? 'Squad' : 'Opponent'),
+      l.side,
+      l.value,
+      l.notes || '',
+    ]);
+  }
+  return rows;
+}
+
+async function loadMatchReportData(pool, eventId, squadId) {
+  const event = await loadEventWithAccess(pool, eventId, squadId);
+  if (!event || LEAGUE_FORMATS.has(event.format)) return null;
+
+  const logsResult = await pool.query(
+    `SELECT l.*, a.name AS athlete_name
+     FROM log_entries l
+     LEFT JOIN athletes a ON a.id = l.athlete_id
+     WHERE l.event_id = $1 AND l.deleted_at IS NULL
+     ORDER BY l.minute NULLS LAST, l.logged_at`,
+    [event.id]
+  );
+  const logs = logsResult.rows.map((l) => ({ ...l, side: l.athlete_id != null ? 'us' : 'them' }));
+
+  const gf = logs
+    .filter((l) => l.is_scoring && l.side === 'us')
+    .reduce((sum, l) => sum + l.value, 0);
+  const ga = logs
+    .filter((l) => l.is_scoring && l.side === 'them')
+    .reduce((sum, l) => sum + l.value, 0);
+
+  return { event, logs, gf, ga };
+}
+
+router.get('/:id/report.csv', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const data = await loadMatchReportData(pool, req.params.id, squadId);
+    if (!data) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const csv = buildCsv(matchReportRows(data.event, data.gf, data.ga, data.logs));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="match-${data.event.id}-report.csv"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('Error exporting match CSV:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/:id/report.pdf', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const data = await loadMatchReportData(pool, req.params.id, squadId);
+    if (!data) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const summary = buildMatchSummary(data.logs, {
+      squadName: 'Squad',
+      opponent: data.event.opponent || 'the opposition',
+      gf: data.gf,
+      ga: data.ga,
+    });
+
+    const lines = [
+      { text: 'Match Report', size: 18, bold: true, gapAfter: 22 },
+      {
+        text: `${data.event.opponent || 'Training session'} · ${
+          data.event.event_date ? new Date(data.event.event_date).toISOString().slice(0, 16).replace('T', ' ') : ''
+        }`,
+        size: 10,
+        gapAfter: 16,
+      },
+      { text: summary.headline, size: 14, bold: true, gapAfter: 16 },
+      { text: summary.narrative, size: 10, gapAfter: 18 },
+      { text: 'Timeline', size: 13, bold: true, gapAfter: 14 },
+    ];
+    if (data.logs.length === 0) {
+      lines.push({ text: 'No actions recorded.', size: 10, gapAfter: 12 });
+    }
+    for (const l of data.logs) {
+      lines.push({
+        text: `${l.minute != null ? `${l.minute}'` : '—'}  ${l.action_type}  ${l.athlete_name || (l.side === 'us' ? 'Squad' : 'Opponent')}${l.notes ? ` — ${l.notes}` : ''}`,
+        size: 10,
+        gapAfter: 13,
+      });
+    }
+
+    const pdf = buildPdf(lines);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="match-${data.event.id}-report.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('Error exporting match PDF:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -386,8 +839,26 @@ router.patch('/:id', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this event' });
     }
 
-    const { title, opponent, event_type, type, event_date, event_time, location, status, duration_minutes } = req.body;
+    const { title, opponent, event_type, type, event_date, event_time, location, status, duration_minutes, season_id } = req.body;
     const timestamp = event_date ? (event_time ? `${event_date}T${event_time}` : event_date) : null;
+
+    // Season tag changes are validated (must belong to this squad); passing
+    // season_id: null clears the tag, omitting it leaves it untouched.
+    let newSeasonId = null;
+    let seasonProvided = false;
+    if (season_id !== undefined) {
+      seasonProvided = true;
+      if (season_id !== null) {
+        const seasonCheck = await pool.query(
+          'SELECT id FROM seasons WHERE id = $1 AND squad_id = $2',
+          [season_id, squadId]
+        );
+        if (seasonCheck.rows.length === 0) {
+          return res.status(400).json({ error: 'Unknown season for this squad' });
+        }
+        newSeasonId = season_id;
+      }
+    }
 
     const result = await pool.query(
       `UPDATE events
@@ -398,9 +869,10 @@ router.patch('/:id', requireAuth(), async (req, res) => {
            location = COALESCE($5, location),
            status = COALESCE($6, status),
            duration_minutes = COALESCE($7, duration_minutes),
+           season_id = COALESCE($9, CASE WHEN $8 THEN NULL ELSE season_id END),
            updated_at = now()
-       WHERE id = $8 RETURNING *`,
-      [title, opponent, type || event_type || null, timestamp, location, status, duration_minutes ? Number(duration_minutes) : null, req.params.id]
+       WHERE id = $10 RETURNING *`,
+      [title, opponent, type || event_type || null, timestamp, location, status, duration_minutes ? Number(duration_minutes) : null, seasonProvided, newSeasonId, req.params.id]
     );
 
     res.json(result.rows[0]);

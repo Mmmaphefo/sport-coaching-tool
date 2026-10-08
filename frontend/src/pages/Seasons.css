@@ -1,0 +1,133 @@
+.roster-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.seasons-hint {
+  color: #666;
+  font-size: 0.9rem;
+  max-width: 60ch;
+}
+
+.seasons-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.25rem 0;
+}
+
+.seasons-tab {
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.seasons-tab-active {
+  background: #1a1a2e;
+  color: #c9a227;
+  border-color: #1a1a2e;
+}
+
+.seasons-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.seasons-detail-header h2 {
+  margin: 0 0 0.25rem;
+}
+
+.seasons-period {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.seasons-export-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.seasons-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.seasons-table th {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 2px solid #eee;
+}
+
+.seasons-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #f2f2f2;
+}
+
+.seasons-result {
+  display: inline-block;
+  width: 1.6rem;
+  text-align: center;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  font-weight: 600;
+  background: #eee;
+}
+
+.seasons-result-w {
+  background: #e2f4e3;
+  color: #1d7a34;
+}
+
+.seasons-result-d {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.seasons-result-l {
+  background: #fde8e8;
+  color: #b3261e;
+}
+
+.seasons-schedule {
+  margin-top: 2rem;
+}
+
+.seasons-schedule-result {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #e5e0d0;
+  border-radius: 10px;
+  background: #fdfcf7;
+}
+
+.seasons-clash-warning {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #f0c36d;
+  background: #fff7e0;
+  border-radius: 8px;
+  color: #7a5b00;
+}
+
+.seasons-clash-warning ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.seasons-created-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  color: #444;
+}

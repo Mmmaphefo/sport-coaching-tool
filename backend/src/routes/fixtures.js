@@ -2,6 +2,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const { requireAuth, getAuth } = require('../middleware/auth');
 const { getOwnedSquadId, getOrCreateUserId } = require('./_squad');
+const { buildMatchSummary } = require('../lib/summary');
 
 const router = express.Router();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -97,6 +98,51 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// GET /api/fixtures/:id/summary — T22 auto post-match summary from the
+// home side's recorded timeline. Scores use the same convention as fixture
+// logging: athlete goals are home goals, athlete-less goals are away goals.
+router.get('/:id/summary', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
+    if (!fixture) {
+      return res.status(404).json({ error: 'Fixture not found' });
+    }
+
+    const logs = classifyFixtureSides(await getFixtureLogs(pool, fixture.id), fixture.home_squad_id === squadId);
+    const gf = logs
+      .filter((l) => l.is_scoring && l.side === 'us')
+      .reduce((sum, l) => sum + l.value, 0);
+    const ga = logs
+      .filter((l) => l.is_scoring && l.side === 'them')
+      .reduce((sum, l) => sum + l.value, 0);
+
+    const summary = buildMatchSummary(logs, {
+      squadName: fixture.home_squad_id === squadId ? fixture.home_squad_name : fixture.away_squad_name,
+      opponent: fixture.home_squad_id === squadId ? fixture.away_squad_name : fixture.home_squad_name,
+      gf,
+      ga,
+    });
+
+    res.json({ fixture_id: fixture.id, status: fixture.status, ...summary });
+  } catch (err) {
+    console.error('Error building fixture summary:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// athlete_id != NULL goals are the home side's (only the home team logs), so
+// "us" vs "them" depends on which side our squad is.
+function classifyFixtureSides(logs, weAreHome) {
+  return logs.map((l) => {
+    const goalIsHome = l.athlete_id != null;
+    const ours = weAreHome ? goalIsHome : !goalIsHome;
+    return { ...l, side: ours ? 'us' : 'them' };
+  });
+}
 
 // GET /api/fixtures/:id/logs
 router.get('/:id/logs', requireAuth(), async (req, res) => {

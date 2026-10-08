@@ -236,3 +236,225 @@
   color: var(--color-ink-soft);
   font-size: 13px;
 }
+
+/* T26: penalties & discipline badges */
+
+.event-discipline-badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.event-discipline-badge--yellow {
+  background: #fff3c4;
+  color: #7a5b00;
+}
+
+.event-discipline-badge--red {
+  background: #fde8e8;
+  color: #b3261e;
+}
+
+.event-discipline-badge--penalty {
+  background: var(--color-chalk);
+  color: var(--color-gold);
+  border: 1px solid var(--color-gold);
+}
+
+/* T22: post-match summary */
+
+.event-summary {
+  margin-bottom: 28px;
+  padding: 20px 24px;
+  border: 1px solid var(--color-line);
+  border-left: 4px solid var(--color-gold);
+  border-radius: var(--radius);
+  background: var(--color-pitch);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.event-summary-headline {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.event-summary-narrative {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-ink-soft);
+}
+
+.event-summary-highlights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.event-summary-highlight {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.event-summary-highlight--goal .timeline-minute {
+  color: #1d7a34;
+}
+
+.event-summary-highlight--card .timeline-minute {
+  color: #b3261e;
+}
+
+.event-summary-highlight--milestone {
+  font-weight: 600;
+}
+
+.event-summary-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  border-top: 1px solid var(--color-line);
+  padding-top: 10px;
+}
+
+/* T21: availability & lineup assistant */
+
+.event-lineup {
+  margin-bottom: 28px;
+  padding: 20px 24px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-pitch);
+}
+
+.event-rsvp-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px 18px;
+  margin-bottom: 14px;
+}
+
+.event-rsvp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-chalk);
+}
+
+.event-rsvp-name {
+  font-size: 14px;
+}
+
+.event-rsvp-options {
+  display: flex;
+  gap: 4px;
+}
+
+.event-rsvp-btn {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.event-rsvp-btn--yes {
+  background: #e2f4e3;
+  border-color: #1d7a34;
+  color: #1d7a34;
+  font-weight: 600;
+}
+
+.event-rsvp-btn--maybe {
+  background: #fff3c4;
+  border-color: #c9a227;
+  color: #7a5b00;
+  font-weight: 600;
+}
+
+.event-rsvp-btn--no {
+  background: #fde8e8;
+  border-color: #b3261e;
+  color: #b3261e;
+  font-weight: 600;
+}
+
+.event-lineup-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.event-lineup-input input {
+  width: 64px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+}
+
+.event-lineup-note {
+  font-size: 13px;
+  color: #1d7a34;
+}
+
+.event-suggestion {
+  margin-top: 16px;
+  border-top: 1px solid var(--color-line);
+  padding-top: 14px;
+}
+
+.event-suggestion h4 {
+  margin: 12px 0 6px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
+.event-suggestion-list {
+  margin: 0;
+  padding-left: 22px;
+  font-size: 14px;
+}
+
+.event-suggestion-list li {
+  padding: 4px 0;
+}
+
+.event-suggestion-reason {
+  display: block;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
+.event-suggestion-doubt {
+  margin-left: 8px;
+  cursor: default;
+}
+
+.event-suggestion-bench {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-ink-soft);
+}

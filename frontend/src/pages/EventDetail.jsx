@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
-import { apiRequest } from '../lib/api'
+import { apiRequest, apiDownload } from '../lib/api'
 import { ACTION_TYPES, formatActionType } from '../lib/actions'
 import WeatherWidget from '../components/WeatherWidget'
 import './EventDetail.css'
@@ -24,14 +24,275 @@ const statusLabel = {
   full: 'Full',
 }
 
+// T26: penalties & discipline — the backend already filters card/penalty log
+// entries out of the timeline into `penalties`; this surfaces them in one place.
+function DisciplineSection({ penalties }) {
+  if (!penalties || penalties.length === 0) return null
+
+  return (
+    <>
+      <h3 className="event-timeline-heading">Penalties &amp; discipline</h3>
+      <div className="event-timeline">
+        {penalties.map((p) => (
+          <div className="timeline-entry" key={p.id}>
+            <span className="timeline-minute">{p.minute != null ? `${p.minute}'` : '—'}</span>
+            <div className="timeline-body">
+              <span className="timeline-action">{formatActionType(p.action_type)}</span>
+              <span className="timeline-who">{p.athlete_name || 'Opponent'}</span>
+              {p.notes && <span className="timeline-notes">{p.notes}</span>}
+            </div>
+            <span
+              className={`event-discipline-badge ${
+                p.action_type.includes('red')
+                  ? 'event-discipline-badge--red'
+                  : p.action_type.includes('yellow')
+                    ? 'event-discipline-badge--yellow'
+                    : 'event-discipline-badge--penalty'
+              }`}
+            >
+              {p.action_type.includes('card') ? 'Card' : 'Penalty'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+// T22: auto post-match summary & highlights. Only meaningful once the event has
+// completed; any failure to build it is silent — it's a bonus panel.
+function MatchSummaryPanel({ id, getToken, status }) {
+  const [summary, setSummary] = useState(null)
+
+  useEffect(() => {
+    if (status !== 'completed') return undefined
+    let cancelled = false
+    apiRequest(`/api/events/${id}/summary`, { getToken })
+      .then((data) => {
+        if (!cancelled) setSummary(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [id, status, getToken])
+
+  if (status !== 'completed' || !summary) return null
+
+  return (
+    <section className="event-summary">
+      <span className="event-summary-headline">{summary.headline}</span>
+      <p className="event-summary-narrative">{summary.narrative}</p>
+      {summary.highlights.length > 0 && (
+        <ul className="event-summary-highlights">
+          {summary.highlights.map((h, i) => (
+            <li key={i} className={`event-summary-highlight event-summary-highlight--${h.kind}`}>
+              {h.minute != null && <span className="timeline-minute">{h.minute}'</span>}
+              {h.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="event-summary-stats">
+        <span>{summary.stats.goals} goals</span>
+        <span>{summary.stats.yellowCards} yellow</span>
+        <span>{summary.stats.redCards} red</span>
+        <span>{summary.stats.penaltiesScored} pens scored</span>
+        <span>{summary.stats.penaltiesMissed} pens missed</span>
+      </div>
+    </section>
+  )
+}
+
+const RSVP_OPTIONS = [
+  { value: 'yes', label: 'In' },
+  { value: 'maybe', label: 'Maybe' },
+  { value: 'no', label: 'Out' },
+]
+
+// T21: availability (RSVPs) + one-click lineup suggestion ranked by coach
+// rating and recent form, with injuries and RSVP'd-out players explained.
+function LineupAssistant({ id, athletes, getToken }) {
+  const [rsvpStatus, setRsvpStatus] = useState({})
+  const [savingRsvps, setSavingRsvps] = useState(false)
+  const [rsvpMessage, setRsvpMessage] = useState('')
+  const [rsvpError, setRsvpError] = useState('')
+  const [size, setSize] = useState(11)
+  const [suggestion, setSuggestion] = useState(null)
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestError, setSuggestError] = useState('')
+
+  useEffect(() => {
+    apiRequest(`/api/events/${id}/rsvps`, { getToken })
+      .then((rows) =>
+        setRsvpStatus(Object.fromEntries(rows.map((r) => [r.athlete_id, r.status])))
+      )
+      .catch(() => {})
+  }, [id, getToken])
+
+  async function saveRsvps() {
+    const entries = Object.entries(rsvpStatus).map(([athleteId, status]) => ({
+      athlete_id: Number(athleteId),
+      status,
+    }))
+    if (entries.length === 0) {
+      setRsvpError('Mark at least one athlete first')
+      return
+    }
+    setSavingRsvps(true)
+    setRsvpError('')
+    setRsvpMessage('')
+    try {
+      await apiRequest(`/api/events/${id}/rsvps`, {
+        method: 'PUT',
+        getToken,
+        body: { rsvps: entries },
+      })
+      setRsvpMessage('Availability saved')
+    } catch (err) {
+      setRsvpError(err.message)
+    } finally {
+      setSavingRsvps(false)
+    }
+  }
+
+  async function suggestLineup() {
+    setSuggesting(true)
+    setSuggestError('')
+    try {
+      const data = await apiRequest(`/api/events/${id}/lineup-suggestion?size=${size}`, {
+        getToken,
+      })
+      setSuggestion(data)
+    } catch (err) {
+      setSuggestError(err.message)
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  if (athletes.length === 0) return null
+
+  return (
+    <section className="event-lineup">
+      <h3 className="event-timeline-heading">Availability &amp; lineup</h3>
+      <div className="event-rsvp-list">
+        {athletes.map((a) => (
+          <div key={a.id} className="event-rsvp-row">
+            <span className="event-rsvp-name">
+              {a.name}
+              {a.squad_number != null ? ` (#${a.squad_number})` : ''}
+            </span>
+            <div className="event-rsvp-options">
+              {RSVP_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={`event-rsvp-btn ${rsvpStatus[a.id] === opt.value ? `event-rsvp-btn--${opt.value}` : ''}`}
+                  onClick={() =>
+                    setRsvpStatus((s) => ({ ...s, [a.id]: opt.value }))
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="roster-form-actions">
+        <button className="btn btn-ghost" onClick={saveRsvps} disabled={savingRsvps}>
+          {savingRsvps ? 'Saving...' : 'Save availability'}
+        </button>
+        <span className="event-lineup-input">
+          Starting XI size
+          <input
+            type="number"
+            min="1"
+            max="30"
+            value={size}
+            onChange={(e) => setSize(e.target.value)}
+          />
+          <button className="btn btn-gold" onClick={suggestLineup} disabled={suggesting}>
+            {suggesting ? 'Thinking...' : 'Suggest lineup'}
+          </button>
+        </span>
+      </div>
+      {rsvpMessage && <p className="event-lineup-note">{rsvpMessage}</p>}
+      {rsvpError && <div className="roster-error">{rsvpError}</div>}
+      {suggestError && <div className="roster-error">{suggestError}</div>}
+
+      {suggestion && (
+        <div className="event-suggestion">
+          {suggestion.starters.length === 0 ? (
+            <p className="roster-status">No available players to suggest.</p>
+          ) : (
+            <>
+              <h4>Starting lineup</h4>
+              <ol className="event-suggestion-list">
+                {suggestion.starters.map((s) => (
+                  <li key={s.athlete.id}>
+                    <strong>{s.athlete.name}</strong>
+                    {s.athlete.position ? ` — ${s.athlete.position}` : ''}
+                    <span className="event-suggestion-reason">{s.reason}</span>
+                    {s.form.goals + s.form.assists > 0 && (
+                      <span className={`event-rsvp-btn event-rsvp-btn--yes event-suggestion-doubt`}>
+                        In form
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+          {suggestion.bench.length > 0 && (
+            <>
+              <h4>Bench</h4>
+              <p className="event-suggestion-bench">
+                {suggestion.bench.map((s) => s.athlete.name).join(', ')}
+              </p>
+            </>
+          )}
+          {suggestion.doubtful.length > 0 && (
+            <>
+              <h4>Doubtful</h4>
+              <ul className="event-suggestion-list">
+                {suggestion.doubtful.map((s) => (
+                  <li key={s.athlete.id}>
+                    <strong>{s.athlete.name}</strong>
+                    <span className="event-suggestion-reason">{s.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {suggestion.unavailable.length > 0 && (
+            <>
+              <h4>Unavailable</h4>
+              <ul className="event-suggestion-list">
+                {suggestion.unavailable.map((s) => (
+                  <li key={s.athlete.id}>
+                    <strong>{s.athlete.name}</strong>
+                    <span className="event-suggestion-reason">{s.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
-  const { event, result, timeline } = detail
+  const { event, result, penalties, timeline } = detail
   const [logForm, setLogForm] = useState(emptyLogForm)
   const [editingLogId, setEditingLogId] = useState(null)
   const [logSaving, setLogSaving] = useState(false)
   const [logError, setLogError] = useState('')
   const [error, setError] = useState('')
   const [statusSaving, setStatusSaving] = useState(false)
+  const [exporting, setExporting] = useState('')
 
   async function handleStatusChange(status) {
     setStatusSaving(true)
@@ -47,6 +308,18 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
       setError(err.message)
     } finally {
       setStatusSaving(false)
+    }
+  }
+
+  async function handleExport(format) {
+    setExporting(format)
+    setError('')
+    try {
+      await apiDownload(`/api/events/${id}/report.${format}`, { getToken })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setExporting('')
     }
   }
 
@@ -135,6 +408,24 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
           {event.location && <p className="event-detail-location">📍 {event.location}</p>}
         </div>
         <div className="event-detail-actions">
+          {event.event_type === 'match' && (
+            <>
+              <button
+                className="btn btn-ghost"
+                disabled={exporting !== ''}
+                onClick={() => handleExport('csv')}
+              >
+                {exporting === 'csv' ? 'Exporting...' : 'Report CSV'}
+              </button>
+              <button
+                className="btn btn-ghost"
+                disabled={exporting !== ''}
+                onClick={() => handleExport('pdf')}
+              >
+                {exporting === 'pdf' ? 'Exporting...' : 'Report PDF'}
+              </button>
+            </>
+          )}
           {event.status === 'scheduled' && (
             <button className="btn btn-gold" disabled={statusSaving} onClick={() => handleStatusChange('live')}>
               Start live
@@ -164,6 +455,12 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
             <span className="event-result-label">{event.opponent || 'Opponent'}</span>
           </div>
         </div>
+      )}
+
+      <MatchSummaryPanel id={id} getToken={getToken} status={event.status} />
+
+      {event.event_type === 'match' && (
+        <LineupAssistant id={id} athletes={athletes} getToken={getToken} />
       )}
 
       <form className="roster-form" onSubmit={handleLogSubmit}>
@@ -252,6 +549,8 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange }) {
           ))}
         </div>
       )}
+
+      <DisciplineSection penalties={penalties} />
     </>
   )
 }

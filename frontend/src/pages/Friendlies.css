@@ -1,0 +1,89 @@
+.friendlies-hint {
+  color: #666;
+  font-size: 0.9rem;
+  max-width: 62ch;
+}
+
+.friendlies-success {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #b5d9b8;
+  background: #eef7ef;
+  color: #1d7a34;
+  border-radius: 8px;
+}
+
+.friendlies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 760px;
+}
+
+.friendlies-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.friendlies-card--accepted {
+  border-color: #b5d9b8;
+}
+
+.friendlies-card--declined,
+.friendlies-card--cancelled {
+  opacity: 0.65;
+}
+
+.friendlies-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+}
+
+.friendlies-direction {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+}
+
+.friendlies-opponent {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.friendlies-meta {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.friendlies-message {
+  font-size: 0.85rem;
+  color: #777;
+  font-style: italic;
+}
+
+.friendlies-card-side {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.friendlies-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.friendlies-error {
+  flex-basis: 100%;
+  margin: 0;
+}
