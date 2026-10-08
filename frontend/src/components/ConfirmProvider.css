@@ -1,0 +1,100 @@
+/* Custom replacement for window.confirm. Colours come from the shared tokens
+   so the dialog follows the light/dark theme like every other surface. */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(var(--color-ink-rgb), 0.55);
+  backdrop-filter: blur(3px);
+  animation: confirm-fade 0.16s ease-out;
+}
+
+.confirm-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  padding: 26px 24px 20px;
+  text-align: center;
+  background: var(--color-pitch);
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(var(--color-ink-rgb), 0.3);
+  animation: confirm-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.confirm-dialog::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  border-radius: 18px 18px 0 0;
+  background: var(--color-lime);
+}
+.confirm-dialog-danger::before {
+  background: #e04040;
+}
+
+.confirm-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: rgba(var(--color-lime-rgb), 0.28);
+  color: var(--color-ink);
+}
+.confirm-badge svg {
+  width: 24px;
+  height: 24px;
+}
+.confirm-badge-danger {
+  background: rgba(224, 64, 64, 0.14);
+  color: #cf2f2f;
+}
+
+.confirm-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.01em;
+  color: var(--color-ink);
+}
+
+.confirm-message {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.confirm-actions .btn {
+  min-width: 96px;
+  justify-content: center;
+}
+
+@keyframes confirm-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes confirm-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

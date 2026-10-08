@@ -12,7 +12,7 @@ This page shows low-fidelity wireframes and high-fidelity mockups for the core s
 
 ```
 +--------------------------------------------------+
-|  Kickstat        Dashboard  Roster  Events  ⚙️   |
+|  Kickstat        Dashboard  Roster  Events     |
 +--------------------------------------------------+
 |                                                  |
 |  WELCOME BACK, COACH                             |
@@ -42,7 +42,7 @@ This page shows low-fidelity wireframes and high-fidelity mockups for the core s
 
 ```
 +--------------------------------------------------+
-|  Kickstat        Dashboard  Roster  Events  ⚙️   |
+|  Kickstat        Dashboard  Roster  Events     |
 +--------------------------------------------------+
 |                                                  |
 |  ROSTER                              [+ Athlete] |
@@ -51,9 +51,9 @@ This page shows low-fidelity wireframes and high-fidelity mockups for the core s
 |  +---------------------------------------------+ |
 |  | Name        | Pos | # | DOB        | Actions| |
 |  |-------------|-----|---|------------|--------| |
-|  | Amahle D.   | FW  | 9 | 2005-03-12 | ✏️ 🗑️  | |
-|  | Lindo M.    | MF  | 8 | 2004-07-22 | ✏️ 🗑️  | |
-|  | Kgotso K.   | DF  | 4 | 2006-01-05 | ✏️ 🗑️  | |
+|  | Amahle D.   | FW  | 9 | 2005-03-12 |   | |
+|  | Lindo M.    | MF  | 8 | 2004-07-22 |   | |
+|  | Kgotso K.   | DF  | 4 | 2006-01-05 |   | |
 |  +---------------------------------------------+ |
 |                                                  |
 +--------------------------------------------------+
@@ -63,7 +63,7 @@ This page shows low-fidelity wireframes and high-fidelity mockups for the core s
 
 ```
 +--------------------------------------------------+
-|  Kickstat        Dashboard  Roster  Events  ⚙️   |
+|  Kickstat        Dashboard  Roster  Events     |
 +--------------------------------------------------+
 |                                                  |
 |  ROSTER                                          |
@@ -85,7 +85,7 @@ This page shows low-fidelity wireframes and high-fidelity mockups for the core s
 
 ```
 +--------------------------------------------------+
-|  Kickstat        Dashboard  Roster  Events  ⚙️   |
+|  Kickstat        Dashboard  Roster  Events     |
 +--------------------------------------------------+
 |                                                  |
 |  LIVE MATCH — vs Eagles FC          17'  2 - 1  |
@@ -112,7 +112,7 @@ This page shows low-fidelity wireframes and high-fidelity mockups for the core s
 
 ```
 +--------------------------------------------------+
-|  Kickstat        Dashboard  Stats   Events  ⚙️   |
+|  Kickstat        Dashboard  Stats   Events     |
 +--------------------------------------------------+
 |                                                  |
 |  AMAHLE DLAMINI                                  |

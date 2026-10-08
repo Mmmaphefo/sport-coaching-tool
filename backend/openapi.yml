@@ -1,0 +1,1301 @@
+openapi: 3.0.3
+info:
+  title: Kickstat API
+  description: Sport Coaching Tool API for managing squads, athletes, events, live match logging, leagues, tactics, drills, and public squad pages.
+  version: 1.1.0
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://kickstat-api-i2rc.onrender.com
+    description: Production
+paths:
+  /api/health:
+    get:
+      summary: Health check (no auth)
+      tags: [Health]
+      responses:
+        '200':
+          description: API status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /api/me:
+    get:
+      summary: Current user ID from JWT
+      tags: [Account]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Clerk user id
+        '401':
+          description: Missing or invalid token
+
+  /api/account/me:
+    get:
+      summary: Get current user profile
+      tags: [Account]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile with role and athlete link
+    delete:
+      summary: Delete account and all associated data
+      tags: [Account]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Account and squad removed
+
+  /api/squads/mine:
+    get:
+      summary: Get current user's squad (auto-creates on first call)
+      tags: [Squads]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Squad details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  name: { type: string }
+                  coach_id: { type: integer }
+                  gender: { type: string, enum: [male, female] }
+                  is_public: { type: boolean }
+                  public_token: { type: string, nullable: true }
+                  onboarded: { type: boolean }
+                  min_roster_size: { type: integer }
+    patch:
+      summary: Update squad name, gender, onboarding, or public visibility
+      tags: [Squads]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                gender: { type: string, enum: [male, female] }
+                onboarded: { type: boolean }
+                is_public: { type: boolean }
+      responses:
+        '200':
+          description: Updated squad
+        '400':
+          description: Invalid gender value
+
+  /api/athletes:
+    get:
+      summary: List all athletes in the squad with injury flags
+      tags: [Athletes]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of athletes
+    post:
+      summary: Add an athlete (coach only)
+      tags: [Athletes]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                position: { type: string }
+                squad_number: { type: integer }
+                date_of_birth: { type: string, format: date }
+                contact_info: { type: string }
+                email: { type: string, description: Optional — sends an athlete invite email when set }
+      responses:
+        '201':
+          description: Athlete created
+        '403':
+          description: Not authorized (assistant role)
+
+  /api/athletes/{id}:
+    patch:
+      summary: Update an athlete (coach only)
+      tags: [Athletes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                position: { type: string }
+                squad_number: { type: integer }
+                date_of_birth: { type: string, format: date }
+                contact_info: { type: string }
+                email: { type: string }
+                is_managed: { type: boolean, description: Managed vs rested status }
+                height_cm: { type: integer }
+                weight_kg: { type: integer }
+                tactical_tags: { type: string }
+                coach_notes: { type: string }
+                photo: { type: string, description: "Data-URL profile photo, client-downscaled" }
+      responses:
+        '200':
+          description: Updated athlete
+        '403':
+          description: Not authorized (assistant role)
+    delete:
+      summary: Remove an athlete (coach only)
+      tags: [Athletes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      responses:
+        '204':
+          description: Athlete removed
+        '403':
+          description: Not authorized (assistant role)
+
+  /api/athletes/{id}/stats:
+    get:
+      summary: Per-athlete statistics with overrides and injury history
+      description: Returns derived season stats; any coach-set overrides are merged in alongside their computed values.
+      tags: [Athletes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      responses:
+        '200':
+          description: Athlete stats, overrides, injuries
+        '404':
+          description: Athlete not found in your squad
+
+  /api/athletes/{id}/stats/override:
+    patch:
+      summary: Coach-only stat correction
+      tags: [Athletes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stat_key, value]
+              properties:
+                stat_key: { type: string, example: goals, enum: [goals, assists, penalties, yellowCards, redCards, appearances] }
+                value: { type: integer }
+                note: { type: string }
+      responses:
+        '200':
+          description: Override set
+        '403':
+          description: Not authorized (assistant role)
+
+  /api/athletes/{id}/stats/override/{statKey}:
+    delete:
+      summary: Revert a stat override (coach only)
+      tags: [Athletes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+        - $ref: '#/components/parameters/StatKey'
+      responses:
+        '204':
+          description: Override reverted
+        '403':
+          description: Not authorized (assistant role)
+
+  /api/compare/athletes:
+    get:
+      summary: Side-by-side athlete comparison
+      tags: [Compare]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: a
+          in: query
+          required: true
+          schema: { type: integer }
+          description: First athlete id
+        - name: b
+          in: query
+          required: true
+          schema: { type: integer }
+          description: Second athlete id
+      responses:
+        '200':
+          description: Comparison payload for both athletes
+        '400':
+          description: Missing or duplicate ids
+        '404':
+          description: An athlete is not in your squad
+
+  /api/dashboard/summary:
+    get:
+      summary: Dashboard summary (readiness, form, leaders, live events)
+      tags: [Dashboard]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Aggregated squad intelligence for the dashboard
+
+  /api/events:
+    get:
+      summary: List events (own + joined + open leagues)
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gender_filter
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: Exclude events squads of the opposite gender may not join
+      responses:
+        '200':
+          description: Array of events
+    post:
+      summary: Create an event or league/tournament
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_date]
+              properties:
+                title: { type: string }
+                opponent: { type: string, description: Match opponent (simple events) }
+                format: { type: string, enum: [match, training, league, tournament], default: match }
+                required_teams: { type: integer, description: League/tournament only — teams needed before fixtures generate }
+                event_date: { type: string, format: date-time }
+                event_time: { type: string }
+                location: { type: string }
+                location_lat: { type: number }
+                location_lng: { type: number }
+                status: { type: string }
+                duration_minutes: { type: integer, default: 90 }
+      responses:
+        '201':
+          description: Event created
+        '400':
+          description: Past date or clash with an existing event
+
+  /api/events/clashes:
+    get:
+      summary: Pre-creation time-conflict check
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: event_date
+          in: query
+          required: true
+          schema: { type: string }
+        - name: duration_minutes
+          in: query
+          schema: { type: integer, default: 90 }
+      responses:
+        '200':
+          description: Conflicting events, if any
+
+  /api/events/{id}:
+    get:
+      summary: Event detail with timeline, lineups, and availability
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event detail
+        '404':
+          description: Not found or not visible to this squad
+    patch:
+      summary: Update event (title, status, location, duration, coordinates)
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                opponent: { type: string }
+                event_date: { type: string, format: date-time }
+                event_time: { type: string }
+                location: { type: string }
+                location_lat: { type: number }
+                location_lng: { type: number }
+                status: { type: string, enum: [scheduled, live, completed, cancelled] }
+                duration_minutes: { type: integer }
+      responses:
+        '200':
+          description: Updated event
+    delete:
+      summary: Permanently remove an event
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '204':
+          description: Event removed
+
+  /api/events/{id}/clashes:
+    get:
+      summary: Time-conflict check for an existing event
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Conflicting events, if any
+
+  /api/events/{id}/cancel:
+    patch:
+      summary: Quick-cancel an event
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event cancelled — further log attempts return 400
+
+  /api/events/{id}/join:
+    post:
+      summary: Join an open league/tournament
+      description: Joining the final team triggers round-robin fixture generation.
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Squad joined (fixtures generated when full)
+        '400':
+          description: League full, wrong gender, or clash with an existing fixture
+
+  /api/events/{id}/teams:
+    get:
+      summary: List teams in a league/tournament
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Array of joined squads
+
+  /api/events/{id}/fixtures:
+    get:
+      summary: List fixtures in a league/tournament
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Array of fixtures
+
+  /api/events/{id}/standings:
+    get:
+      summary: League standings table
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Standings sorted by points, goal difference, goals for
+
+  /api/events/{id}/stats:
+    get:
+      summary: Top scorers and assisters across the league
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Aggregated league stats
+
+  /api/events/{id}/lineup:
+    put:
+      summary: Set starting XI and bench for a simple event
+      tags: [Lineups]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lineups]
+              properties:
+                lineups:
+                  type: object
+                  properties:
+                    home:
+                      type: array
+                      items:
+                        type: object
+                        required: [athlete_id]
+                        properties:
+                          athlete_id: { type: integer }
+                          pos_x: { type: integer, description: "Pitch position 0-100, null while benched" }
+                          pos_y: { type: integer }
+                          is_starter: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Lineup saved — the event auto-starts when enough players are available
+        '400':
+          description: Invalid lineup payload
+        '409':
+          description: Not enough available RSVPs to start
+
+  /api/events/{id}/simulate:
+    post:
+      summary: Simulate a match event (Quick Sim / Simulate Match)
+      description: >
+        Resolves an EA FC-style overall for every player in the saved lineups
+        (starters and bench) and returns a full 90-minute script weighted by
+        those ratings. Nothing is written here: the client replays the returned
+        events through POST /api/events/{id}/logs, so a simulated match is
+        recorded exactly like a manually logged one. `mode` only tells the
+        client how to pace that replay.
+      tags: [Simulation]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: { type: string, enum: [quick, timed], default: quick, description: "quick applies every event at once; timed spreads the 90 minutes over two real minutes" }
+      responses:
+        '200':
+          description: Script, resolved ratings and match summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode: { type: string, enum: [quick, timed] }
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        minute: { type: integer }
+                        team_side: { type: string, enum: [home, away] }
+                        action_type: { type: string, enum: [goal, shot_on_target, save, yellow_card, red_card, substitution, penalty] }
+                        is_scoring: { type: boolean }
+                        athlete_id: { type: integer, nullable: true }
+                        assist_athlete_id: { type: integer, nullable: true }
+                        substitute_athlete_id: { type: integer, nullable: true }
+                  ratings:
+                    type: object
+                    description: Keyed by athlete id
+                    additionalProperties:
+                      type: object
+                      properties:
+                        overall: { type: integer }
+                        position: { type: string, nullable: true }
+                        source: { type: string, enum: [dataset, estimated] }
+                  summary:
+                    type: object
+                    properties:
+                      homeStrength: { type: number }
+                      awayStrength: { type: number }
+                      homeExpectedGoals: { type: number }
+                      awayExpectedGoals: { type: number }
+                      homeGoals: { type: integer }
+                      awayGoals: { type: integer }
+                      eventCount: { type: integer }
+        '400':
+          description: No saved lineup, cancelled or finished match, or a league/tournament event (use the fixture endpoints)
+        '403':
+          description: Only the host squad can simulate this event
+
+  /api/events/{id}/logs:
+    get:
+      summary: Active log entries for the live timeline
+      tags: [Live Logging]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Array of log entries (soft-deleted excluded)
+    post:
+      summary: Log a live action
+      description: >
+        Idempotent for offline replay: if `client_id` was already stored, the
+        replayed request returns the original entry instead of duplicating it.
+      tags: [Live Logging]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action_type]
+              properties:
+                action_type: { type: string, enum: [goal, assist, shot_on_target, save, yellow_card, red_card, substitution, penalty] }
+                athlete_id: { type: integer, nullable: true }
+                minute: { type: integer }
+                value: { type: integer, default: 1 }
+                is_scoring: { type: boolean }
+                notes: { type: string }
+                assist_athlete_id: { type: integer, nullable: true }
+                substitute_athlete_id: { type: integer, nullable: true }
+                client_id: { type: string, description: Client-generated id for offline-queue idempotency }
+      responses:
+        '201':
+          description: Log entry created
+        '400':
+          description: Event is cancelled, not live, or the athlete is not in the lineup
+
+  /api/events/{id}/logs/{logId}:
+    patch:
+      summary: Edit a log entry
+      tags: [Live Logging]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/LogId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action_type: { type: string }
+                minute: { type: integer }
+                value: { type: integer }
+                notes: { type: string }
+      responses:
+        '200':
+          description: Updated log entry
+    delete:
+      summary: Undo (soft-delete) a log entry
+      tags: [Live Logging]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/LogId'
+      responses:
+        '200':
+          description: Log entry soft-deleted
+
+  /api/events/{id}/rsvps:
+    get:
+      summary: All athlete availability responses for an event
+      tags: [RSVPs]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Array of RSVP rows
+
+  /api/events/{id}/rsvps/mine:
+    put:
+      summary: Athlete user sets their own availability
+      tags: [RSVPs]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [pending, available, unavailable, maybe] }
+                note: { type: string }
+      responses:
+        '200':
+          description: RSVP saved
+
+  /api/events/{id}/rsvps/{athleteId}:
+    put:
+      summary: Coach sets an athlete's availability
+      tags: [RSVPs]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/AthleteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [pending, available, unavailable, maybe] }
+                note: { type: string }
+      responses:
+        '200':
+          description: RSVP saved
+        '403':
+          description: Not authorized (assistant role)
+
+  /api/fixtures/{id}:
+    get:
+      summary: Fixture detail with timeline, lineups, and rosters
+      tags: [Fixtures]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+      responses:
+        '200':
+          description: Fixture detail
+    patch:
+      summary: Update fixture (status, kickoff time)
+      tags: [Fixtures]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [scheduled, live, completed, cancelled] }
+                event_date: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Updated fixture
+        '409':
+          description: Not enough available home-squad RSVPs to go live
+
+  /api/fixtures/{id}/clashes:
+    get:
+      summary: Time-conflict check for a fixture
+      tags: [Fixtures]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+      responses:
+        '200':
+          description: Conflicting fixtures, if any
+
+  /api/fixtures/{id}/lineup:
+    put:
+      summary: Set both teams' starting XI and bench
+      tags: [Lineups]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lineups]
+              properties:
+                lineups:
+                  type: object
+                  properties:
+                    home:
+                      type: array
+                      items: { $ref: '#/components/schemas/LineupEntry' }
+                    away:
+                      type: array
+                      items: { $ref: '#/components/schemas/LineupEntry' }
+      responses:
+        '200':
+          description: Lineups saved — the fixture auto-starts when the home squad has enough available RSVPs
+        '400':
+          description: Invalid lineup payload
+
+  /api/fixtures/{id}/simulate:
+    post:
+      summary: Simulate a fixture (Quick Sim / Simulate Match)
+      description: >
+        Fixture equivalent of POST /api/events/{id}/simulate — builds a ratings
+        weighted 90-minute script from both teams' saved lineups and returns it
+        for the client to replay through POST /api/fixtures/{id}/logs. Only the
+        home squad may simulate.
+      tags: [Simulation]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: { type: string, enum: [quick, timed], default: quick }
+      responses:
+        '200':
+          description: Script, resolved ratings and match summary (same shape as the event endpoint)
+        '400':
+          description: No lineups saved, cancelled or finished fixture, or a team without a starting XI
+        '403':
+          description: Only the home team can simulate this fixture
+
+  /api/fixtures/{id}/logs:
+    get:
+      summary: Fixture log entries
+      tags: [Fixtures]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+      responses:
+        '200':
+          description: Array of fixture log entries
+    post:
+      summary: Log a fixture action (home team only)
+      tags: [Fixtures]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action_type]
+              properties:
+                action_type: { type: string, enum: [goal, assist, shot_on_target, save, yellow_card, red_card, substitution, penalty] }
+                athlete_id: { type: integer, nullable: true }
+                minute: { type: integer }
+                value: { type: integer, default: 1 }
+                is_scoring: { type: boolean }
+                notes: { type: string }
+                assist_athlete_id: { type: integer, nullable: true }
+                substitute_athlete_id: { type: integer, nullable: true }
+                client_id: { type: string, description: Client-generated id for offline-queue idempotency }
+      responses:
+        '201':
+          description: Log entry created
+        '400':
+          description: Fixture is cancelled or not live
+
+  /api/fixtures/{id}/logs/{logId}:
+    patch:
+      summary: Edit a fixture log entry
+      tags: [Fixtures]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+        - $ref: '#/components/parameters/LogId'
+      responses:
+        '200':
+          description: Updated log entry
+    delete:
+      summary: Undo (soft-delete) a fixture log entry
+      tags: [Fixtures]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FixtureId'
+        - $ref: '#/components/parameters/LogId'
+      responses:
+        '200':
+          description: Log entry soft-deleted
+
+  /api/injuries:
+    post:
+      summary: Log an athlete injury with a return-to-play estimate (US29)
+      tags: [Injuries]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [athlete_id, description, date_sustained]
+              properties:
+                athlete_id: { type: integer }
+                description: { type: string, example: "Moderate ankle sprain" }
+                date_sustained: { type: string, format: date }
+                severity: { type: string, enum: [minor, moderate, severe], default: moderate }
+      responses:
+        '201':
+          description: Injury created — response includes the estimated return_date, estimation_min_weeks, estimation_max_weeks, and estimation_basis
+        '400':
+          description: Validation error (missing fields or invalid severity)
+        '404':
+          description: Athlete not found in your squad
+
+  /api/injuries/{id}:
+    patch:
+      summary: Override the return date, edit details, or clear the injury (coach only, US30/US31)
+      tags: [Injuries]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+                date_sustained: { type: string, format: date }
+                severity: { type: string, enum: [minor, moderate, severe] }
+                return_date: { type: string, format: date }
+                clear: { type: boolean, description: Set true to manually clear the injury early }
+      responses:
+        '200':
+          description: Updated injury
+        '403':
+          description: Not authorized (assistant role)
+    delete:
+      summary: Remove a mis-logged injury (coach only)
+      tags: [Injuries]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Injury removed
+        '403':
+          description: Not authorized (assistant role)
+
+  /api/invites:
+    post:
+      summary: Create an assistant or athlete invite (coach only)
+      tags: [Invites]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, enum: [assistant, athlete] }
+                athlete_id: { type: integer, description: Required for role=athlete — links the invite to an existing roster row }
+      responses:
+        '201':
+          description: Invite created and emailed via Gmail
+
+  /api/invites/{token}/accept:
+    post:
+      summary: Accept an invite and link to the squad/role
+      tags: [Invites]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: Invite accepted
+        '400':
+          description: Unknown or already-used token
+
+  /api/invites/verify/{token}:
+    get:
+      summary: Public invite verification (no auth)
+      tags: [Invites]
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: Invite details for the accept page
+        '404':
+          description: Unknown or already-used token
+
+  /api/tactics:
+    get:
+      summary: List all tactics for the squad
+      tags: [Tactics]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of tactics
+    post:
+      summary: Create a new tactic board
+      tags: [Tactics]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, frames]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                frames: { type: array, items: { type: object }, description: Board frames (player positions, arrows, drawings) }
+      responses:
+        '201':
+          description: Tactic created
+
+  /api/tactics/{id}:
+    get:
+      summary: Get a single tactic with frames
+      tags: [Tactics]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Tactic detail
+        '404':
+          description: Not found or another squad's tactic
+    patch:
+      summary: Update a tactic
+      tags: [Tactics]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                frames: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: Updated tactic
+    delete:
+      summary: Delete a tactic
+      tags: [Tactics]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Tactic deleted
+
+  /api/sessions:
+    get:
+      summary: List drills in the squad's drill library
+      tags: [Sessions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tactical_goal
+          in: query
+          schema: { type: string }
+        - name: age_group
+          in: query
+          schema: { type: string }
+        - name: max_duration
+          in: query
+          schema: { type: integer }
+        - name: phase
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Array of drills
+    post:
+      summary: Create a new drill
+      tags: [Sessions]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, tactical_goal]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                tactical_goal: { type: string }
+                age_group: { type: string, default: First Team }
+                duration_minutes: { type: integer }
+                equipment: { type: string }
+                instructions: { type: string }
+                phase: { type: string }
+      responses:
+        '201':
+          description: Drill created
+
+  /api/sessions/{id}:
+    patch:
+      summary: Update a drill
+      tags: [Sessions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                tactical_goal: { type: string }
+                age_group: { type: string }
+                duration_minutes: { type: integer }
+                equipment: { type: string }
+                instructions: { type: string }
+                phase: { type: string }
+      responses:
+        '200':
+          description: Updated drill
+    delete:
+      summary: Delete a drill
+      tags: [Sessions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Drill deleted
+
+  /api/public/squads:
+    get:
+      summary: Public squad directory with live events (no auth)
+      tags: [Public]
+      responses:
+        '200':
+          description: Public squads and their live events
+
+  /api/public/squads/{id}:
+    get:
+      summary: Public squad page with roster and results (no auth)
+      tags: [Public]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Public squad profile
+        '404':
+          description: Squad is not public
+
+  /api/public/links/{token}:
+    get:
+      summary: Private-link squad page (no auth)
+      tags: [Public]
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: Squad profile for the token
+        '404':
+          description: Unknown token
+
+  /api/public/links/{token}/export.csv:
+    get:
+      summary: CSV roster export (no auth)
+      tags: [Public]
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: CSV file download
+          content:
+            text/csv: {}
+
+  /api/weather:
+    get:
+      summary: Weather forecast for a venue
+      tags: [External Integrations]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: location
+          in: query
+          schema: { type: string }
+          description: Place name to geocode
+        - name: lat
+          in: query
+          schema: { type: number }
+          description: Venue pin latitude (takes precedence with lng)
+        - name: lng
+          in: query
+          schema: { type: number }
+      responses:
+        '200':
+          description: Weather forecast data
+        '503':
+          description: External weather service unavailable
+
+  /webhooks/clerk:
+    post:
+      summary: Clerk webhook handler
+      tags: [Webhooks]
+      description: Receives user.created and user.deleted events from Clerk. Mounted at /webhooks (not under /api).
+      responses:
+        '200':
+          description: Webhook processed
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Clerk JWT token
+  parameters:
+    EventId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+      description: Event id
+    FixtureId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+      description: Fixture id
+    LogId:
+      name: logId
+      in: path
+      required: true
+      schema: { type: integer }
+      description: Log entry id
+    AthleteId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+      description: Athlete id
+    StatKey:
+      name: statKey
+      in: path
+      required: true
+      schema: { type: string }
+      description: Stat key, e.g. goals
+    Token:
+      name: token
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    LineupEntry:
+      type: object
+      required: [athlete_id]
+      properties:
+        athlete_id: { type: integer }
+        pos_x: { type: integer, description: "Pitch position 0-100, null while benched" }
+        pos_y: { type: integer }
+        is_starter: { type: boolean, default: true }

@@ -32,6 +32,26 @@ jobs:
 
       - name: Build
         run: npm run build
+      
+      - name: Run frontend tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./frontend/coverage
+          slug: Mmmaphefo/sport-coaching-tool
+          flags: frontend
+          fail_ci_if_error: false
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: https://github.com/christopherHX/gitea-upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          if-no-files-found: error
 
   backend-ci:
     name: Backend Lint & Test
@@ -41,6 +61,28 @@ jobs:
         working-directory: ./backend
     env:
       NODE_ENV: test
+      # DATABASE_URL is intentionally NOT set here. The runner's service
+      # networking has flipped between host networking (service reachable at
+      # localhost:5433) and per-job bridge networks (service reachable by
+      # container name at postgres:5433), so the probe step below discovers
+      # the working address and exports DATABASE_URL for later steps.
+      # Postgres still listens on 5433 because 5432 is taken on the runner
+      # host by Gitea's own database.
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: sport_coaching_test
+          PGPORT: "5433"
+        options: >-
+          --health-cmd "pg_isready -p 5433"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
 
     steps:
       - name: Checkout code
@@ -56,54 +98,93 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Service networking on the runner is not stable (host networking vs
+      # per-job bridge networks across runner updates), so probe every
+      # candidate address and export the first one that accepts a
+      # connection as DATABASE_URL for the migration/test steps.
+      - name: Resolve Postgres address
+        run: |
+          cat > pgprobe.ci.js <<'EOF'
+          const { Client } = require("pg");
+          const fs = require("fs");
+          const candidates = [
+            "postgres:5433",
+            "localhost:5433",
+            "127.0.0.1:5433",
+            "172.17.0.1:5433",
+            "host.docker.internal:5433",
+          ];
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          (async () => {
+            for (let round = 1; round <= 6; round++) {
+              for (const c of candidates) {
+                const [host, port] = c.split(":");
+                const writeEnv = () =>
+                  fs.appendFileSync(
+                    process.env.GITHUB_ENV,
+                    "DATABASE_URL=postgresql://test_user:test_password@" +
+                      host + ":" + port + "/sport_coaching_test\n"
+                  );
+                const client = new Client({
+                  host,
+                  port: Number(port),
+                  // Full credentials: only a complete authenticated connect
+                  // proves the candidate is OUR service container — an auth
+                  // failure means it is some other Postgres and must be
+                  // rejected (the SASL "client password must be a string"
+                  // error on a bare probe means the server answered but the
+                  // probe could not authenticate).
+                  user: "test_user",
+                  password: "test_password",
+                  database: "sport_coaching_test",
+                  connectionTimeoutMillis: 2000,
+                });
+                try {
+                  await client.connect();
+                  await client.end();
+                  console.log("Postgres reachable at " + c);
+                  writeEnv();
+                  process.exit(0);
+                } catch (err) {
+                  await client.end().catch(() => {});
+                  console.log(
+                    "round " + round + ": not reachable at " + c +
+                    " (" + (err.code || err.message) + ")"
+                  );
+                }
+              }
+              await sleep(5000);
+            }
+            console.error("ERROR: no Postgres candidate was reachable");
+            process.exit(1);
+          })();
+          EOF
+          node pgprobe.ci.js
+          rm pgprobe.ci.js
+
       - name: Lint
         run: npm run lint
 
-      - name: Start and wait for Postgres
-        run: |
-          docker rm -f pgci || true
-          docker run -d --name pgci \
-            -e POSTGRES_USER=test_user \
-            -e POSTGRES_PASSWORD=test_password \
-            -e POSTGRES_DB=sport_coaching_test \
-            -p 5432:5432 postgres:16
-
-          HOST_IP=$(docker inspect pgci --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-          echo "Using Postgres container IP: $HOST_IP"
-          export DATABASE_URL="postgresql://test_user:test_password@${HOST_IP}:5432/sport_coaching_test"
-
-          node -e "
-          const { Client } = require('pg');
-          (async () => {
-            for (let i = 0; i < 30; i++) {
-              try {
-                const client = new Client({ connectionString: process.env.DATABASE_URL });
-                await client.connect();
-                await client.query('SELECT 1');
-                await client.end();
-                console.log('Postgres is ready');
-                process.exit(0);
-              } catch (err) {
-                console.log('Waiting for Postgres...', err.message);
-                await new Promise(r => setTimeout(r, 1000));
-              }
-            }
-            console.error('Postgres did not become ready in time');
-            process.exit(1);
-          })();
-          "
-
       - name: Run migrations
-        run: |
-          HOST_IP=$(docker inspect pgci --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-          export DATABASE_URL="postgresql://test_user:test_password@${HOST_IP}:5432/sport_coaching_test"
-          npx node-pg-migrate up --no-check-order
+        run: npx node-pg-migrate up --no-check-order
 
       - name: Run tests with coverage
-        run: |
-          HOST_IP=$(docker inspect pgci --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-          export DATABASE_URL="postgresql://test_user:test_password@${HOST_IP}:5432/sport_coaching_test"
-          npm run test:coverage
+        run: npm run test:coverage
+
+      # --- Codecov upload -----------------------------------------------------
+      # Codecov has no native Gitea integration, so this uploads against a
+      # GitHub mirror of this repo instead (see slug below). "directory"
+      # (rather than a single "files" path) is used since Vitest's coverage-v8
+      # reporter can emit more than one format (e.g. lcov.info + coverage-final.json)
+      # depending on vitest.config — pointing at the whole folder lets the
+      # action pick up whichever reports exist without needing an exact filename.
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./backend/coverage
+          slug: Mmmaphefo/sport-coaching-tool
+          fail_ci_if_error: false
 
       - name: Upload coverage report
         if: always()
@@ -113,14 +194,193 @@ jobs:
           path: backend/coverage
           if-no-files-found: error
 
+  coverage-dashboard:
+    name: Coverage Dashboard
+    # Merges the backend and frontend HTML coverage reports (uploaded as
+    # artifacts by the two test jobs) into one Netlify site with a landing
+    # page showing each suite's line coverage. Uses the artifact download
+    # API added in Gitea 1.24 (christopherHX/gitea-download-artifact).
+    # Runs only when both test jobs passed, so the dashboard never shows
+    # a failed or partial run, and it is not part of the deploy chain.
+    needs: [frontend-ci, backend-ci]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download backend coverage
+        uses: https://github.com/christopherHX/gitea-download-artifact@v4
+        with:
+          name: backend-coverage
+          path: dashboard/backend
+
+      - name: Download frontend coverage
+        uses: https://github.com/christopherHX/gitea-download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: dashboard/frontend
+
+      - name: Build dashboard index
+        run: |
+          cat > gen-dashboard.ci.js <<'EOF'
+          const fs = require("fs");
+          const path = require("path");
+
+          // One card per suite. Line-coverage percentages come from each
+          // suite's coverage-summary.json (Vitest json-summary reporter);
+          // a missing summary degrades to "n/a" instead of failing.
+          const suites = [
+            {
+              key: "backend",
+              title: "Backend API",
+              subtitle: "Express + PostgreSQL · Vitest integration tests",
+              href: "./backend/index.html",
+            },
+            {
+              key: "frontend",
+              title: "Frontend",
+              subtitle: "React + Vite · Vitest component tests",
+              href: "./frontend/index.html",
+            },
+          ];
+
+          function readLinePct(key) {
+            try {
+              const summary = JSON.parse(
+                fs.readFileSync(path.join("dashboard", key, "coverage-summary.json"), "utf8")
+              );
+              const pct = summary && summary.total && summary.total.lines.pct;
+              return typeof pct === "number" ? pct.toFixed(1) + "%" : "n/a";
+            } catch (err) {
+              return "n/a";
+            }
+          }
+
+          const cards = suites
+            .map(function (s) {
+              return (
+                '<a class="card" href="' + s.href + '">' +
+                "<h2>" + s.title + "</h2>" +
+                '<p class="pct">' + readLinePct(s.key) + "</p>" +
+                '<p class="sub">' + s.subtitle + "</p>" +
+                '<p class="open">Open full report</p>' +
+                "</a>"
+              );
+            })
+            .join("\n");
+
+          const html = [
+            "<!doctype html>",
+            '<html lang="en">',
+            "<head>",
+            '<meta charset="utf-8">',
+            '<meta name="viewport" content="width=device-width, initial-scale=1">',
+            "<title>KickStat Test Coverage Dashboard</title>",
+            "<style>",
+            "body{font-family:system-ui,sans-serif;margin:0;background:#0f172a;color:#e2e8f0;}",
+            "main{max-width:860px;margin:0 auto;padding:3rem 1.5rem;}",
+            "h1{margin:0 0 .25rem;}",
+            "p.note{color:#94a3b8;margin:0 0 2rem;}",
+            "div.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;}",
+            "a.card{display:block;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1.5rem;color:inherit;text-decoration:none;}",
+            "a.card:hover{border-color:#ca8a04;}",
+            "h2{margin:0 0 .75rem;font-size:1.15rem;}",
+            "p.pct{font-size:2.25rem;font-weight:700;margin:0 0 .5rem;color:#facc15;}",
+            "p.sub{color:#94a3b8;margin:0 0 1rem;}",
+            "p.open{margin:0;color:#facc15;}",
+            "</style>",
+            "</head>",
+            "<body>",
+            "<main>",
+            "<h1>KickStat Test Coverage Dashboard</h1>",
+            '<p class="note">Published automatically by Gitea Actions after every green CI run · ' +
+              new Date().toISOString() +
+              "</p>",
+            '<div class="grid">',
+            cards,
+            "</div>",
+            "</main>",
+            "</body>",
+            "</html>",
+          ].join("\n");
+
+          fs.writeFileSync(path.join("dashboard", "index.html"), html);
+          console.log("Wrote dashboard/index.html");
+          EOF
+          node gen-dashboard.ci.js
+          rm gen-dashboard.ci.js
+
       - name: Publish coverage dashboard
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_COVERAGE_SITE_ID: ${{ secrets.NETLIFY_COVERAGE_SITE_ID }}
+        # Same fail-soft policy as the old backend-only step: a Netlify
+        # outage or bad token must not turn CI red — the coverage artifacts
+        # and Codecov uploads are the source of truth.
         run: |
-          npx --yes netlify-cli deploy \
-            --dir=coverage \
+          timeout 60 npx --yes netlify-cli deploy \
+            --dir=dashboard \
             --prod \
             --site="$NETLIFY_COVERAGE_SITE_ID" \
-            --auth="$NETLIFY_AUTH_TOKEN"
+            --auth="$NETLIFY_AUTH_TOKEN" \
+            || echo "::warning::Coverage dashboard deploy failed or timed out — check NETLIFY_AUTH_TOKEN / NETLIFY_COVERAGE_SITE_ID secrets, or whether this runner can reach Netlify's API; dashboard not updated"
 
+  deploy-production:
+    name: Deploy Production
+    needs: [frontend-ci, backend-ci]
+    # Only deploy on real pushes to main — never feature branches or PRs,
+    # and only after lint and tests have passed.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so the GitHub push below isn't from a shallow
+          # clone — GitHub rejects pushes from shallow repositories.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Render auto-deploys the backend whenever the GitHub fork's main
+      # advances, so syncing the commit there IS the backend deploy.
+      #
+      # The mirror must always fast-forward from Gitea main. If someone pushes
+      # to the GitHub fork directly the histories diverge and this push is
+      # rejected — that once left the Render backend stuck on an old build for
+      # days (every new endpoint 404ed in production) because the failure was
+      # only a warning. It now fails the job loudly instead.
+      - name: Sync main to GitHub (triggers Render backend deploy)
+        env:
+          # Named GH_PAT because Gitea forbids secrets starting with GITHUB_
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "::error::GH_PAT secret not set — the backend cannot be deployed"
+            exit 1
+          fi
+          git remote remove github 2>/dev/null || true
+          git remote add github "https://x-access-token:${GH_PAT}@github.com/TasmiyaChoonara/sport-coaching-tool.git"
+          # Force push to ensure GitHub matches Gitea exactly
+          git push --force github HEAD:main
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy frontend to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Deploy-stage failures warn instead of failing the job, matching the
+        # Netlify coverage step above: code is already verified by the
+        # lint/test jobs, so a deploy hiccup shouldn't turn CI red.
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::Cloudflare secrets not set — skipping frontend deploy"
+            exit 0
+          fi
+          timeout 300 npx --yes wrangler pages deploy --branch=main \
+            || echo "::warning::Cloudflare Pages deploy failed — frontend not updated"

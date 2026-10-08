@@ -1,0 +1,332 @@
+.ps-shell {
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 60px;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: var(--color-pitch);
+  min-height: 100svh;
+  box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+  .ps-shell {
+    padding-left: 48px;
+    padding-right: 48px;
+  }
+}
+
+@media (min-width: 1400px) {
+  .ps-shell {
+    padding-left: 80px;
+    padding-right: 80px;
+  }
+}
+
+.ps-back {
+  display: inline-block;
+  margin: 20px 0;
+  color: var(--color-sky);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.ps-back:hover {
+  text-decoration: underline;
+}
+
+.ps-error {
+  color: #b33b3b;
+}
+
+/* Banner */
+
+.ps-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 28px;
+  background: linear-gradient(135deg, var(--color-ink-fixed) 0%, #10202e 100%);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 40px 48px;
+}
+
+.ps-banner-id {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.ps-crest {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  border: 3px solid var(--color-gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--color-gold);
+  flex-shrink: 0;
+}
+
+.ps-eyebrow {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 13px;
+  color: var(--color-gold-deep);
+  margin: 0 0 6px;
+}
+
+.ps-title {
+  font-family: var(--font-display);
+  font-size: 46px;
+  margin: 0 0 6px;
+  line-height: 1.05;
+  color: #fff;
+}
+
+.ps-subtitle {
+  margin: 0;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ps-record {
+  display: flex;
+  gap: 16px;
+}
+
+.ps-record-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 14px 24px;
+  text-align: center;
+  min-width: 84px;
+}
+
+.ps-record-num {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.ps-record-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 4px;
+}
+
+/* Sections */
+
+.ps-section {
+  background: var(--color-chalk);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  padding: 32px;
+  margin-top: 28px;
+}
+
+.ps-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.ps-section-head h2 {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 18px;
+  margin: 0;
+}
+
+.ps-section-tag {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft);
+}
+
+.ps-empty {
+  color: var(--color-ink-soft);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Recent results */
+
+.ps-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ps-result-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+  font-size: 15px;
+}
+
+.ps-result-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.ps-result-badge-W { background: #2f9e5c; }
+.ps-result-badge-D { background: #9aa1ab; }
+.ps-result-badge-L { background: #c0392b; }
+
+.ps-result-date {
+  color: var(--color-ink-soft);
+  min-width: 92px;
+}
+
+.ps-result-opponent {
+  font-weight: 600;
+  flex: 1;
+}
+
+.ps-result-score {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--color-gold);
+}
+
+.ps-result-league {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
+/* Top performers */
+
+.ps-performer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.ps-performer-card {
+  position: relative;
+  background: var(--color-pitch);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 22px;
+}
+
+.ps-performer-num {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-gold);
+  /* Fixed navy on the lime badge — the theme-swapping ink would go
+     near-white in dark mode and vanish against the lime. */
+  color: var(--color-ink-fixed);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ps-performer-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-gold-deep);
+  margin: 0 0 10px;
+}
+
+.ps-performer-value {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.ps-performer-name {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-ink-soft);
+}
+
+/* First-team squad */
+
+.ps-squad-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ps-squad-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--color-pitch);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+}
+
+.ps-squad-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-ink-fixed);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ps-squad-name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.ps-squad-meta {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+/* Dark theme: lift the light-tuned error red for the navy canvas. */
+[data-theme="dark"] .ps-error {
+  color: #e5737a;
+}

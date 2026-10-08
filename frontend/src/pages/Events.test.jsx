@@ -1,5 +1,5 @@
 // AI assistance: drafted with Claude (Sonnet 5) via claude.ai; reviewed and tested by the project team.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import Events from './Events'
@@ -29,6 +29,11 @@ describe('Events', () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset()
     mocks.getToken.mockResolvedValue('test-token')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
   })
 
   it('shows a loading state then an empty events message', async () => {
@@ -119,5 +124,158 @@ describe('Events', () => {
 
     expect(screen.getByRole('heading', { name: /Schedule event/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Create event/i })).toBeInTheDocument()
+  })
+
+  it('switches between list and calendar view', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/events') return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /List view/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Calendar view/i })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Calendar view/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Calendar view/i }).getAttribute('aria-pressed')).toBe('true')
+    })
+  })
+
+  it('hides staff actions and shows own RSVP badges for athletes', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      if (path === '/api/events') {
+        return Promise.resolve([
+          {
+            id: 1,
+            title: 'Friendly vs Riverside FC',
+            format: 'match',
+            status: 'scheduled',
+            event_date: '2026-09-12T10:00:00.000Z',
+            location: 'Wits Main Oval',
+            my_rsvp: 'available',
+          },
+          {
+            id: 2,
+            title: 'Open League',
+            format: 'league',
+            status: 'open',
+            team_count: 1,
+            required_teams: 4,
+          },
+        ])
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => {
+      // Own RSVP badge instead of the staff controls.
+      expect(screen.getByText(/You\u2019re in/i)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Schedule event/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Join' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Gender filter/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('uses player-facing copy in the empty state for athletes', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/account/me') return Promise.resolve({ role: 'athlete' })
+      if (path === '/api/events') return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/No events scheduled yet/i)).toBeInTheDocument()
+      expect(screen.getByText(/coach\u2019s fixtures and training sessions/i)).toBeInTheDocument()
+    })
+  })
+
+  it('sends the map pin with a newly scheduled event', async () => {
+    const posts = []
+    mocks.apiRequest.mockImplementation((path, options = {}) => {
+      if (path === '/api/events' && options.method === 'POST') {
+        posts.push(options.body)
+        return Promise.resolve({ id: 42 })
+      }
+      if (path.startsWith('/api/events/clashes')) return Promise.resolve([])
+      if (path === '/api/events') return Promise.resolve([])
+      if (path === '/api/squads/mine') {
+        return Promise.resolve({ id: 7, athlete_count: 15, min_roster_size: 11 })
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Schedule event/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Schedule event/i }))
+
+    fireEvent.change(screen.getByLabelText(/Date & time/i), { target: { value: '2026-12-01T10:00' } })
+    fireEvent.change(screen.getByLabelText(/Opponent/i), { target: { value: 'Riverside FC' } })
+
+    // Drop the pin — with jsdom's zero-size canvas a click at (0, 0) resolves
+    // to the map's default Johannesburg centre.
+    const map = screen.getByRole('application', { name: /venue map/i })
+    fireEvent.pointerDown(map, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerUp(map, { pointerId: 1, clientX: 0, clientY: 0 })
+
+    await waitFor(() => expect(screen.getByText(/Pinned at/i)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /Create event/i }))
+
+    await waitFor(() => expect(posts.length).toBe(1))
+    expect(posts[0].location_lat).toBe(-26.2041)
+    expect(posts[0].location_lng).toBe(28.0473)
+    expect(posts[0].location).toBeNull()
+  })
+
+  it('pins a chosen address on the map and previews its weather', async () => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.test.123')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        features: [{ place_name: 'Wits Main Oval, Johannesburg', center: [28.0305, -26.1926] }],
+      }),
+    }))
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/events/clashes')) return Promise.resolve([])
+      if (path === '/api/events') return Promise.resolve([])
+      if (path === '/api/squads/mine') {
+        return Promise.resolve({ id: 7, athlete_count: 15, min_roster_size: 11 })
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Schedule event/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Schedule event/i }))
+
+    // Type in the Location field — the single address entry of the form.
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Wits Main Oval' } })
+    fireEvent.click(await screen.findByRole('button', { name: /Wits Main Oval, Johannesburg/i }))
+
+    // The pin lands on the chosen address and the field holds its name…
+    await waitFor(() => expect(screen.getByText(/Pinned at -26.192600, 28.030500/i)).toBeInTheDocument())
+    expect(screen.getByRole('searchbox').value).toBe('Wits Main Oval, Johannesburg')
+    // …and the weather preview resolves the pinned coordinates exactly, so a
+    // street address doesn't depend on city-level name geocoding. Typing
+    // alone fires a name-only preview first; the pick must upgrade it to a
+    // pinned request — assert on that call, whichever order they land in.
+    await waitFor(() => {
+      const pinnedCall = mocks.apiRequest.mock.calls
+        .map((call) => String(call[0]))
+        .find((path) => path.startsWith('/api/weather?') && path.includes('lat=-26.1926') && path.includes('lng=28.0305'))
+      expect(pinnedCall).toBeDefined()
+    }, { timeout: 3000 })
   })
 })

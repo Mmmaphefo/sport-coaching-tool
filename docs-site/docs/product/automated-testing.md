@@ -4,11 +4,11 @@ sidebar_position: 5
 
 # Automated Testing
 
-Kickstat uses automated backend integration tests to verify the API, database
-behaviour, permissions, and key user journeys. This page explains the testing
-strategy, how to run the suite, and how to use the CI coverage evidence during
-each sprint.
-
+Kickstat uses automated tests on both sides of the stack: backend integration
+tests verify the API, database behaviour, permissions, and key user journeys,
+while frontend component tests verify rendering, routing guards, and the API
+helper. This page explains the testing strategy, how to run each suite, and how
+to use the CI coverage evidence during each sprint.
 ## Testing strategy
 
 The backend suite uses:
@@ -18,6 +18,13 @@ The backend suite uses:
 | [Vitest](https://vitest.dev/) | Runs the test suite and produces coverage reports. |
 | [Supertest](https://github.com/forwardemail/supertest) | Sends HTTP requests to the Express application without starting a public server. |
 | PostgreSQL | Provides a real database for integration tests, so migrations, constraints, SQL queries, and cascades are exercised. |
+The frontend suite uses:
+
+| Tool | Purpose |
+|---|---|
+| [Vitest](https://vitest.dev/) | Same runner and coverage tooling as the backend, configured for the browser environment. |
+| [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) | Renders components and queries them the way a user would (by visible text and roles). |
+| [jsdom](https://github.com/jsdom/jsdom) | Provides a lightweight DOM implementation so component tests run without a real browser. |
 
 Tests are deliberately run against a separate PostgreSQL database. The suite
 resets its tables before each test, so it must **never** point at the normal
@@ -28,12 +35,23 @@ local development database.
 The integration suite covers the main backend workflows, including:
 
 - account creation, roles, invite acceptance, and account deletion;
-- squad ownership and assistant permission boundaries;
-- roster creation, editing, removal, and athlete statistics;
+- squad ownership, squad gender, public visibility, and assistant permission boundaries;
+- roster creation, editing, removal, athlete statistics, and coach stat overrides (US42);
 - event creation, editing, cancellation, live logging, result calculation,
   and undo behaviour;
+- event start guards: past-date rejection, lineup-gated starts, and the
+  auto-transition sweep (US6, US13);
 - league fixtures, standings, and top-scorer aggregation;
-- external football-data API response normalisation and error handling; and
+- starting-XI and bench management for events and fixtures;
+- RSVP availability and the start-live availability gate (US41);
+- pre-creation and post-creation clash detection (US43);
+- public squad pages, private links, and CSV export (US28/US50);
+- offline-queue replay idempotency via `client_id` (US45);
+- injury logging, return-to-play estimates, coach overrides, and roster flags (US29–US31);
+- cancelled event and fixture logging being rejected (US6);
+- ratings-driven match simulation: dataset lookup, caching, positional estimates,
+  and the script both simulation endpoints return (US48);
+- event reminder email scheduling (US29); and
 - venue weather lookup behaviour.
 
 The user-story-to-test mapping is maintained in the
@@ -50,15 +68,25 @@ backend/tests/integration/
 | File | Main coverage area |
 |---|---|
 | `account.integration.test.js` | Account profile and deletion |
-| `athletes.integration.test.js` | Athlete summary statistics |
+| `athletes.integration.test.js` | Athlete summary statistics and stat overrides (US42) |
 | `auth-and-roles.integration.test.js` | Authentication-related roles, invites, and access control |
-| `events.integration.test.js` | Live event logging and league events |
-| `external.integration.test.js` | Football-data API integration |
-| `fixtures.integration.test.js` | Fixture detail, live logging, and permissions |
+| `event-start-guards.integration.test.js` | Past-date rejection, lineup-gated starts, anchored `started_at` |
+| `events.integration.test.js` | Live event logging, league events, gender filter |
+| `fixtures.integration.test.js` | Fixture detail, live logging, simulation, and permissions |
+| `injuries.integration.test.js` | Injury logging, estimates, overrides, and roster flags (US29–US31) |
 | `invites.integration.test.js` | Assistant and athlete invitations |
+| `lineups.integration.test.js` | Starting XI and bench management for events and fixtures |
+| `match-availability.integration.test.js` | RSVPs, the start-live availability gate (US41), clash detection (US43) |
+| `missing-features.integration.test.js` | Public pages (US28/US50), offline replay idempotency (US45) |
+| `reminders.integration.test.js` | Event reminder email scheduling |
 | `roster-and-events-basic.integration.test.js` | Roster and basic event management |
-| `squad.integration.test.js` | Squad and user self-healing helpers |
+| `simulation.integration.test.js` | Player ratings lookup and the match simulation endpoints (US48) |
+| `squad.integration.test.js` | Squad creation, gender, public visibility |
 | `weather.integration.test.js` | Weather integration |
+
+Plus `backend/tests/migrations.test.js`, which verifies migration integrity. The
+Pro Fixtures (football-data.org) integration and its test suite were removed in
+Sprint 3 — see [Feature Rationale](./feature-rationale.md).
 
 ## Run tests locally
 
@@ -102,6 +130,31 @@ that `TEST_DATABASE_URL` targets the test database, not the development or
 production database, before running it.
 :::
 
+## Frontend testing
+
+Frontend component tests live next to the components they test:
+
+```text
+frontend/src/**/*.test.jsx and frontend/src/**/*.test.js
+```
+
+20 test files cover the pages (Dashboard, Roster, Events, EventDetail, LiveMatch,
+AthleteStats, AccountSettings, InviteAccept, PublicLanding, PublicSquad,
+Welcome), the shared components (Layout, ProtectedRoute, ConfirmProvider, Pitch,
+VenueMapEditor, WeatherWidget), and the lib modules (`api`, `lineups`, `simulation`).
+The venue map is exercised in both of its modes — Mapbox (address search,
+reverse geocoding, high-accuracy GPS) and the OpenStreetMap fallback — with
+geocoding responses stubbed so CI needs no token or network access. The
+suite runs with a raised `testTimeout` in `vitest.config.js` because jsdom
+rendering of the data-heavy pages exceeds the 5 s default on slower machines.
+
+The simulation feature is covered on the frontend too:
+`frontend/src/lib/simulation.test.js` covers mapping the script onto log bodies
+and the two-minute pacing of a timed replay, and the `LiveMatch simulation`
+tests in `frontend/src/pages/LiveMatch.test.jsx` cover Quick Sim, stopping a
+timed run part way through, and the gate that offers the buttons only once a
+starting XI is set.
+
 ## View coverage locally
 
 `npm run test:coverage` writes an HTML report to:
@@ -113,8 +166,11 @@ backend/coverage/index.html
 Open this file in a browser to inspect coverage by folder and source file. The
 report also prints a summary in the terminal.
 
-The latest verified local baseline is **57 passing integration tests** with
-**76.39% statement coverage**.
+The current baseline is **145 backend integration tests** (statement coverage
+above 75%) plus **133 frontend component tests** (about 63% line coverage on
+the 2026-09-28 local run; the Sprint 4 venue-map upgrade added coverage for
+address search, GPS accuracy and the read-only map). Both suites run on every
+push — the live numbers are on the coverage dashboard linked below.
 
 ## Live coverage dashboard
 
@@ -140,6 +196,9 @@ The backend CI job:
 4. runs `npm run test:coverage`; and
 5. uploads `backend/coverage` as the **`backend-coverage`** artifact.
 
+The frontend CI job mirrors it: ESLint, production build,
+`npm run test:coverage`, and a Codecov upload for the frontend coverage
+report, so both suites must stay green for a pull request to pass.
 To review a CI coverage report:
 
 1. Open the relevant Gitea Actions run.

@@ -4,6 +4,13 @@ sidebar_position: 2
 
 # football-data.org
 
+:::warning Removed in Sprint 3
+The Pro Fixtures feature and its football-data.org integration were **removed in
+Sprint 3** (see [Feature Rationale](../product/feature-rationale.md) for the
+justification). This page is retained as a historical record of how the
+integration worked while it was part of the product.
+:::
+
 ## What football-data.org does for us
 
 [football-data.org](https://www.football-data.org) provides professional football fixtures, results, and league standings. In Kickstat it powers the **Pro Fixtures** tab on the Events page, where coaches can compare their own schedule against top-tier competitions.

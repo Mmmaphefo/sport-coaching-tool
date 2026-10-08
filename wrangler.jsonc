@@ -1,0 +1,11 @@
+// Cloudflare Pages config for the Kickstat frontend.
+// pages_build_output_dir makes `wrangler pages deploy` config-driven, so the
+// project name comes from here rather than an interactive prompt.
+// Deploy with: npx wrangler pages deploy --branch=main --force
+// (--force opts into classic Cloudflare Pages, which serves kickstat.pages.dev
+// instead of <name>.<account>.workers.dev)
+{
+  "name": "kickstat",
+  "compatibility_date": "2026-09-14",
+  "pages_build_output_dir": "frontend/dist"
+}

@@ -1,7 +1,8 @@
 const express = require('express');
-const { Pool } = require('pg');
+const crypto = require('crypto');
+const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId } = require('./_squad');
+const { getOwnedSquadId, getOwnedSquadIdForStaff, getOwnedSquadIdForCoach } = require('./_squad');
 const {
   getSquadMatches,
   summariseMatches,
@@ -9,7 +10,6 @@ const {
 } = require('../lib/matchStats');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // GET /api/squads/mine — get the logged-in user's squad, creating one if it doesn't exist yet
 router.get('/mine', requireAuth(), async (req, res) => {
@@ -33,24 +33,43 @@ router.get('/mine', requireAuth(), async (req, res) => {
   }
 });
 
-// PATCH /api/squads/mine — rename the squad and/or mark onboarding complete
+// PATCH /api/squads/mine — rename the squad, set gender, mark onboarding
+// complete, and/or toggle public page visibility. Coach only — players and
+// assistants never manage squad settings.
 router.patch('/mine', requireAuth(), async (req, res) => {
   try {
-    const { name, onboarded } = req.body;
+    const { name, gender, onboarded, is_public } = req.body;
 
     if (name !== undefined && !name.trim()) {
       return res.status(400).json({ error: 'Squad name cannot be empty' });
     }
 
+    if (gender !== undefined && !['male', 'female'].includes(gender)) {
+      return res.status(400).json({ error: 'Gender must be male or female' });
+    }
+
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+
+    // Only relevant when turning public ON. If the squad already has a
+    // token (e.g. was public before and got turned off), we keep it so the
+    // same link keeps working rather than silently breaking a link someone
+    // was already given out. The COALESCE below only uses this value when
+    // public_token is currently NULL.
+    const candidateToken = is_public === true ? crypto.randomBytes(24).toString('hex') : null;
 
     const result = await pool.query(
       `UPDATE squads
        SET name = COALESCE($1, name),
-           onboarded = COALESCE($2, onboarded)
-       WHERE id = $3 RETURNING *`,
-      [name ? name.trim() : null, onboarded ?? null, squadId]
+           gender = COALESCE($2, gender),
+           onboarded = COALESCE($3, onboarded),
+           is_public = COALESCE($4, is_public),
+           public_token = CASE
+             WHEN $4 = true THEN COALESCE(public_token, $6)
+             ELSE public_token
+           END
+       WHERE id = $5 RETURNING *`,
+      [name ? name.trim() : null, gender || null, onboarded ?? null, is_public ?? null, squadId, candidateToken]
     );
 
     res.json(result.rows[0]);

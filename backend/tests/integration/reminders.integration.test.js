@@ -1,7 +1,13 @@
 // AI assistance: drafted with Claude (Sonnet 5) via claude.ai; reviewed and tested by the project team.
-import { describe, test, expect, beforeAll, beforeEach, afterAll } from 'vitest'
+import { describe, test, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { pool, resetDatabase } from './setup'
-import { sendEventReminders } from '../../src/lib/reminders'
+
+// Imported dynamically in beforeAll (not statically at the top of the file):
+// reminders.js builds its Resend client at module-load time from
+// RESEND_API_KEY, and Vitest injects the real key from backend/.env into the
+// test process. Stubbing the env var first keeps the test hermetic — without
+// a key the test path marks reminders as sent without calling Resend.
+let sendEventReminders
 
 describe('Event reminders', () => {
   beforeAll(async () => {
@@ -14,6 +20,9 @@ describe('Event reminders', () => {
         { cause: err }
       )
     }
+
+    vi.stubEnv('RESEND_API_KEY', '')
+    sendEventReminders = (await import('../../src/lib/reminders')).sendEventReminders
   })
 
   beforeEach(async () => {
@@ -21,6 +30,7 @@ describe('Event reminders', () => {
   })
 
   afterAll(async () => {
+    vi.unstubAllEnvs()
     await pool.end()
   })
 
@@ -33,7 +43,10 @@ describe('Event reminders', () => {
       [user.rows[0].id, 'Reminder Squad']
     )
 
-    const in23Hours = new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString()
+    // Date object, not an ISO string: the event_date column is `timestamp
+    // without time zone` and PG drops the `Z` from ISO strings, storing the
+    // UTC wall clock as local time (which breaks in timezones ahead of UTC).
+    const in23Hours = new Date(Date.now() + 23 * 60 * 60 * 1000)
 
     const event = await pool.query(
       `INSERT INTO events (squad_id, opponent, event_type, event_date, status, created_by, reminder_sent)
@@ -59,7 +72,7 @@ describe('Event reminders', () => {
       [user.rows[0].id, 'Later Squad']
     )
 
-    const in48Hours = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+    const in48Hours = new Date(Date.now() + 48 * 60 * 60 * 1000)
 
     const event = await pool.query(
       `INSERT INTO events (squad_id, opponent, event_type, event_date, status, created_by, reminder_sent)

@@ -1,8 +1,12 @@
 import './Loader.css'
 
-function Loader({ label = 'Loading...', size = 'md' }) {
+// The one loader for the whole app: a football that bounces and spins over its
+// own shadow. `inline` sits it inside a button (next to a label such as
+// "Saving..."), `size` scales it down for tighter spots.
+function Loader({ label = 'Loading...', size = 'md', inline = false }) {
+  const className = `loader loader-${size}${inline ? ' loader-inline' : ''}`
   return (
-    <div className={`loader loader-${size}`} role="status" aria-live="polite">
+    <div className={className} role="status" aria-live="polite">
       <div className="loader-ball-track">
         <svg
           className="loader-ball"

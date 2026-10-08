@@ -36,7 +36,7 @@ erDiagram
     }
     SQUADS {
         serial id PK
-        integer coach_id FK UK
+        integer coach_id FK "UK"
         varchar name
         integer min_roster_size
         boolean onboarded

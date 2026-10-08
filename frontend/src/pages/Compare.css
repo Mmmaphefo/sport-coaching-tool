@@ -1,0 +1,197 @@
+.cmp-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.cmp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.cmp-eyebrow {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-silver);
+  margin-bottom: 0.5rem;
+}
+
+.cmp-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.cmp-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  border-radius: 12px;
+  border: 1px solid var(--color-line);
+}
+
+.cmp-select-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cmp-select-label select {
+  padding: 0.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.cmp-select-label select:focus {
+  outline: none;
+  border-color: var(--color-lime);
+}
+
+.cmp-error {
+  padding: 1rem;
+  background: rgba(224, 85, 85, 0.1);
+  border: 1px solid rgba(224, 85, 85, 0.3);
+  border-radius: 8px;
+  color: #e05555;
+  margin-bottom: 1.5rem;
+}
+
+.cmp-result {
+  animation: cmpFadeIn 0.3s ease-out;
+}
+
+@keyframes cmpFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cmp-athlete-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--color-line);
+}
+
+.cmp-athlete-name {
+  text-align: center;
+}
+
+.cmp-athlete-number {
+  display: block;
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--color-lime);
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.cmp-athlete-name h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+}
+
+.cmp-position {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-silver);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cmp-stats-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.cmp-stat {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.cmp-stat-accent {
+  background: linear-gradient(135deg, rgba(208, 255, 65, 0.08), rgba(208, 255, 65, 0.02));
+  border-color: rgba(208, 255, 65, 0.3);
+}
+
+.cmp-stat-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-silver);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cmp-stat-values {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cmp-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  min-width: 3rem;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.cmp-stat-leader {
+  color: var(--color-lime);
+}
+
+.cmp-stat-vs {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-silver);
+  text-transform: uppercase;
+}
+
+@media (max-width: 640px) {
+  .cmp-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .cmp-athlete-header {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .cmp-stat-values {
+    gap: 0.5rem;
+  }
+
+  .cmp-stat-value {
+    font-size: 1.25rem;
+    min-width: 2.5rem;
+  }
+}

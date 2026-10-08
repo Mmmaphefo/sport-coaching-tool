@@ -1,0 +1,58 @@
+.public-squad-page {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+  color: #e6e8ec;
+  /* Always-dark page: use the sidebar navy (never flat black) so it matches
+     the app's dark theme. */
+  background: var(--color-ink-fixed);
+  min-height: 100vh;
+}
+
+.public-squad-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.public-squad-header h1 {
+  margin: 0;
+}
+
+.public-squad-error {
+  color: #f56565;
+}
+
+.public-squad-table-wrap {
+  overflow-x: auto;
+}
+
+.public-squad-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.public-squad-table th,
+.public-squad-table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.public-squad-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.public-squad-results li {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.9rem;
+}

@@ -1,15 +1,40 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --color-pitch: #ffffff;
-  --color-ink: #141414;
+  /* ---- KickStat core palette ---- */
+  --color-pitch: #FFFFFF;
+  --color-ink: #0B1B33;
+  --color-blue: #0250B0;
+  --color-lime: #D0FF41;
+  --color-lime-deep: #A8C233;
+  --color-silver: #C6D0DD;
+
+  /* RGB channel triplets for rgba() variants of the core palette */
+  --color-ink-rgb: 11, 27, 51;
+  --color-blue-rgb: 2, 80, 176;
+  --color-lime-rgb: 208, 255, 65;
+  --color-silver-rgb: 198, 208, 221;
+
+  /* Legacy aliases — older pages still reference these names */
+  --color-elite-blue: var(--color-blue);
+  --color-elite-blue-deep: var(--color-ink);
+  --color-volt-lime: var(--color-lime);
+  --color-silver-cloud: var(--color-silver);
+
+  /* Supporting neutrals, now mapped onto the real brand palette so every
+     page that still references the old names picks up the new look
+     automatically, no per-file edits needed. */
   --color-ink-soft: #4a4a4a;
-  --color-gold: #c9a24b;
-  --color-gold-deep: #a9843a;
-  --color-sky: #4a90d9;
-  --color-sky-soft: rgba(74, 144, 217, 0.1);
+  --color-gold: var(--color-lime);
+  --color-gold-deep: var(--color-lime-deep);
+  --color-sky: var(--color-blue);
+  --color-sky-soft: rgba(2, 80, 176, 0.1);
   --color-chalk: #f5f4f1;
   --color-line: #e4e1d9;
+  /* Full-bleed page canvas behind cards (Roster/Events/Tactics grey in
+     light mode; the sidebar navy in dark mode so pages blend with the
+     app shell instead of showing a near-black band). */
+  --color-canvas: #eef2f7;
   --shadow-card: 0 1px 2px rgba(20, 20, 20, 0.04), 0 8px 24px rgba(20, 20, 20, 0.07);
   --radius: 10px;
   --radius-sm: 6px;
@@ -25,6 +50,40 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+/* Theme-invariant colours — these NEVER swap with the theme:
+   - --color-ink-fixed is the brand navy used for the sidebar and any
+     deliberately-dark accent card, so those stay on-brand in both themes.
+   - --color-pitch-fixed is a fixed white for text/borders that sit ON those
+     fixed dark surfaces (sidebar links, credentials panels, accent cards).
+     Using the theme-swapping --color-pitch there would render near-black
+     text on the navy in dark mode. */
+:root {
+  --color-ink-fixed: #0B1B33;
+  --color-pitch-fixed: #FFFFFF;
+  /* Fixed brand blue for solid fills that always carry white text (pills,
+     avatars, chips, pitch dots). The theme-swapping --color-blue lifts to a
+     pale blue in dark mode, which would break white-on-blue contrast. */
+  --color-blue-fixed: #0250B0;
+}
+
+/* Dark theme: the base is the sidebar navy (never flat black), cards sit on
+   it with crisper borders and deeper shadows, and chalk steps one tone up
+   for inset wells and toggle tracks. */
+[data-theme="dark"] {
+  --color-pitch: #0B1B33;
+  --color-canvas: #0B1B33;
+  --color-chalk: #182A48;
+  --color-line: rgba(255, 255, 255, 0.12);
+  --color-ink: #F2F4F8;
+  --color-ink-soft: #A7B0C2;
+  /* Lift the action blue for links/text/borders on navy — the light-mode
+     #0250B0 would sink into the dark canvas. Solid fills switch to
+     --color-blue-fixed instead so their white text keeps its contrast. */
+  --color-blue: #7cb3ef;
+  --color-sky-soft: rgba(124, 179, 239, 0.22);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
 }
 
 * {
@@ -74,7 +133,7 @@ p {
 }
 
 a {
-  color: var(--color-sky);
+  color: var(--color-blue);
   text-decoration: none;
 }
 
@@ -87,14 +146,14 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-sky);
+  outline: 2px solid var(--color-blue);
   outline-offset: 2px;
 }
 
 .btn {
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 11px 22px;
@@ -109,12 +168,14 @@ button {
 }
 
 .btn-gold {
-  background: var(--color-gold);
-  color: var(--color-pitch);
+  background: var(--color-lime);
+  /* Fixed navy, not theme ink: in dark mode --color-ink flips to
+     near-white, which would sit illegibly on the bright lime. */
+  color: var(--color-ink-fixed);
 }
 
 .btn-gold:hover {
-  background: var(--color-gold-deep);
+  background: var(--color-lime-deep);
 }
 
 .btn-ghost {
@@ -136,6 +197,145 @@ button {
 .btn-danger:hover {
   border-color: #b33b3b;
   background: rgba(179, 59, 59, 0.06);
+}
+
+/* The shared danger red is tuned for light surfaces; lift it in dark mode
+   so it stays clearly readable on the navy. */
+[data-theme="dark"] .btn-danger {
+  color: #e5737a;
+  border-color: rgba(229, 115, 122, 0.45);
+}
+
+[data-theme="dark"] .btn-danger:hover {
+  border-color: #e5737a;
+  background: rgba(229, 115, 122, 0.1);
+}
+
+/* ---------------------------------------------------------------------------
+   Shared form & state patterns — used by Roster, Events, LiveMatch,
+   Dashboard and Setup. Defined here (not in a page stylesheet) so every
+   page is styled correctly even when it is the first one loaded.
+--------------------------------------------------------------------------- */
+.roster-error {
+  background: rgba(179, 59, 59, 0.08);
+  border: 1px solid rgba(179, 59, 59, 0.3);
+  color: #b33b3b;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+[data-theme="dark"] .roster-error {
+  background: rgba(229, 115, 122, 0.1);
+  border-color: rgba(229, 115, 122, 0.35);
+  color: #e5737a;
+}
+
+.roster-status {
+  font-size: 14px;
+  padding: 20px 0;
+}
+
+.roster-empty {
+  border: 1px dashed var(--color-line);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--color-pitch);
+  color: var(--color-ink-soft);
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+  color: var(--color-ink-soft);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.btn-icon:hover {
+  border-color: var(--color-blue);
+  color: var(--color-ink);
+}
+
+.btn-icon-active {
+  background: var(--color-blue-fixed);
+  border-color: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
+}
+
+.btn-icon-active:hover {
+  color: var(--color-pitch-fixed);
+}
+
+.roster-form {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-pitch);
+  padding: 24px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-card);
+}
+
+.roster-form h3 {
+  margin-bottom: 16px;
+}
+
+.roster-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.roster-form-wide {
+  grid-column: 1 / -1;
+}
+
+.roster-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft);
+}
+
+.roster-form input,
+.roster-form select {
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+  color: var(--color-ink);
+}
+
+.roster-form input:focus,
+.roster-form select:focus {
+  outline: none;
+  border-color: var(--color-sky);
+  box-shadow: 0 0 0 3px var(--color-sky-soft);
+}
+
+.roster-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.roster-added-confirmation p {
+  margin-bottom: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {

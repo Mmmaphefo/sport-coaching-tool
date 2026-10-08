@@ -1,0 +1,85 @@
+/* Address autocomplete — visually matches the venue editor's dark theme. */
+
+.venue-addr {
+  position: relative;
+}
+
+.venue-addr input[type='search'],
+.venue-addr input[type='text'] {
+  width: 100%;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.venue-addr input[type='search']:focus,
+.venue-addr input[type='text']:focus {
+  outline: 1px solid rgba(240, 200, 60, 0.6);
+  outline-offset: 1px;
+}
+
+.venue-addr input[type='search']::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.venue-addr-status {
+  position: absolute;
+  right: 0.6rem;
+  top: 0.42rem;
+  font-size: 0.72rem;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.venue-addr-results {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0b1b33;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.venue-addr-results button {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.venue-addr-results button:hover,
+.venue-addr-results button:focus-visible,
+.venue-addr-results .venue-addr-result-active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.venue-addr-none {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.venue-addr-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: #e0564f;
+}

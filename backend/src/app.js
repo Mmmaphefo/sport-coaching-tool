@@ -1,9 +1,12 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
 const { clerkMiddleware, requireAuth } = require('./middleware/auth');
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
+const path = require('path');
 const webhooksRouter = require('./routes/webhooks');
+const dashboardRouter = require('./routes/dashboard');
 const squadsRouter = require('./routes/squads');
 const athletesRouter = require('./routes/athletes');
 const eventsRouter = require('./routes/events');
@@ -14,17 +17,44 @@ const weatherRouter = require('./routes/weather');
 const seasonsRouter = require('./routes/seasons');
 const friendliesRouter = require('./routes/friendlies');
 const leaderboardRouter = require('./routes/leaderboard');
+const injuriesRouter = require('./routes/injuries');
+const compareRouter = require('./routes/compare');
+const tacticsRouter = require('./routes/tactics');
+const sessionsRouter = require('./routes/sessions');
+const publicRouter = require('./routes/public');
 const { sendEventReminders } = require('./lib/reminders');
 
 const app = express();
 
 app.use('/webhooks', webhooksRouter);
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+  // FRONTEND_URL carries the deployed frontend origin (set on the hosting
+  // platform); the extra ports cover local Vite dev servers, which bump the
+  // port when 5173 is already in use.
+  origin: [
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+  ].filter(Boolean),
   credentials: true,
 }));
-app.use(express.json());
+// Raised from the 100kb default so profile-photo data URLs (already
+// downscaled in the browser) fit without hitting a 413.
+app.use(express.json({ limit: '1mb' }));
+app.use('/api/dashboard', dashboardRouter);
+// No auth middleware — the token in the URL is the access control (see
+// public.js). Mounted before clerkMiddleware like /api/dashboard above.
+app.use('/api/public', publicRouter);
 app.use(clerkMiddleware());
+
+// Moved here from before `const app = express()` — that's what was crashing
+// the server. Everything else in this block is unchanged from what you sent.
+if (process.env.NODE_ENV !== 'test') {
+  const swaggerDocument = YAML.load(path.join(__dirname, '..', 'openapi.yml'));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+}
+
 app.use('/api/squads', squadsRouter);
 app.use('/api/athletes', athletesRouter);
 app.use('/api/events', eventsRouter);
@@ -35,6 +65,10 @@ app.use('/api/weather', weatherRouter);
 app.use('/api/seasons', seasonsRouter);
 app.use('/api/friendlies', friendliesRouter);
 app.use('/api/leaderboard', leaderboardRouter);
+app.use('/api/injuries', injuriesRouter);
+app.use('/api/compare', compareRouter);
+app.use('/api/tactics', tacticsRouter);
+app.use('/api/sessions', sessionsRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -48,35 +82,78 @@ app.get('/api/me', requireAuth(), (req, res) => {
 // ---- Auto-transition sweep ----
 // Runs periodically so events don't require a manual "Start live"/"End event"
 // click: scheduled -> live once event_date passes, live -> completed once
-// event_date + duration_minutes passes. Manual buttons on the frontend still
-// work as an override (e.g. starting a delayed match early/late).
-const sweepPool = new Pool({ connectionString: process.env.DATABASE_URL });
+// started_at + duration_minutes passes (falling back to event_date for rows
+// that went live before started_at existed). Manual buttons on the frontend
+// still work as an override (e.g. starting a delayed match early/late).
+// Shared pool from db.js — previously a second pool created just for the
+// sweep, which doubled this process's connection count.
+const sweepPool = require('./db');
+const { getMatchAvailability } = require('./lib/availability');
+
+// Matches and fixtures may only start once enough players are available, so
+// the sweep checks each due row individually instead of flipping every one in
+// a single UPDATE — the RSVP bar holds for the automatic start exactly as it
+// does for the Start live button (see lib/availability). A match that is short
+// of available players simply stays 'scheduled' until the squad responds.
+async function startDueMatches() {
+  const matchCandidates = await sweepPool.query(
+    `SELECT id, squad_id FROM events
+     WHERE status = 'scheduled' AND format = 'match' AND event_date <= now()`
+  );
+  for (const row of matchCandidates.rows) {
+    const availability = await getMatchAvailability(sweepPool, { eventId: row.id, squadId: row.squad_id });
+    if (!availability.meets) continue;
+    await sweepPool.query(
+      `UPDATE events SET status = 'live', started_at = COALESCE(started_at, now()), updated_at = now()
+       WHERE id = $1 AND status = 'scheduled'`,
+      [row.id]
+    );
+  }
+
+  // League/tournament fixtures follow the same bar (their event carries the
+  // RSVPs; the home squad is the one that fields the team).
+  const fixtureCandidates = await sweepPool.query(
+    `SELECT id, event_id, home_squad_id FROM fixtures
+     WHERE status = 'scheduled' AND event_date <= now()`
+  );
+  for (const row of fixtureCandidates.rows) {
+    const availability = await getMatchAvailability(sweepPool, {
+      eventId: row.event_id,
+      squadId: row.home_squad_id,
+    });
+    if (!availability.meets) continue;
+    await sweepPool.query(
+      `UPDATE fixtures SET status = 'live', started_at = COALESCE(started_at, now()), updated_at = now()
+       WHERE id = $1 AND status = 'scheduled'`,
+      [row.id]
+    );
+  }
+}
 
 async function runAutoTransitionSweep() {
   try {
-    // Simple events and league containers
+    // Training sessions carry no availability bar, so they still flip in one
+    // statement. League/tournament containers also pass through a 'scheduled'
+    // state (while teams are joining) and must never auto-start; their
+    // fixtures transition individually above.
     await sweepPool.query(
-      `UPDATE events SET status = 'live', updated_at = now()
-       WHERE status = 'scheduled' AND event_date <= now()`
+      `UPDATE events SET status = 'live', started_at = COALESCE(started_at, now()), updated_at = now()
+       WHERE status = 'scheduled' AND format = 'training' AND event_date <= now()`
     );
+    await startDueMatches();
     await sweepPool.query(
       `UPDATE events SET status = 'completed', updated_at = now()
-       WHERE status = 'live'
-         AND event_date + (COALESCE(duration_minutes, 90) || ' minutes')::interval <= now()`
+       WHERE status = 'live' AND format IN ('match', 'training')
+         AND COALESCE(started_at, event_date) + (COALESCE(duration_minutes, 90) || ' minutes')::interval <= now()`
     );
 
-    // League/tournament fixtures
-    await sweepPool.query(
-      `UPDATE fixtures SET status = 'live', updated_at = now()
-       WHERE status = 'scheduled' AND event_date <= now()`
-    );
     await sweepPool.query(
       `UPDATE fixtures f
        SET status = 'completed', updated_at = now()
        FROM events e
        WHERE f.status = 'live'
          AND f.event_id = e.id
-         AND f.event_date + (COALESCE(e.duration_minutes, 90) || ' minutes')::interval <= now()`
+         AND COALESCE(f.started_at, f.event_date) + (COALESCE(e.duration_minutes, 90) || ' minutes')::interval <= now()`
     );
   } catch (err) {
     console.error('Auto-transition sweep failed:', err.message);

@@ -24,11 +24,19 @@ function Setup() {
   }, [step])
 
   const [squadName, setSquadName] = useState('')
+  const [squadGender, setSquadGender] = useState('male')
 
   const [assistantEmail, setAssistantEmail] = useState('')
   const [assistantInviteLink, setAssistantInviteLink] = useState(null)
 
-  const [athleteForm, setAthleteForm] = useState({ name: '', position: '', squad_number: '', email: '' })
+  const [athleteForm, setAthleteForm] = useState({
+    name: '',
+    position: '',
+    squad_number: '',
+    date_of_birth: '',
+    contact_info: '',
+    email: '',
+  })
   const [athletes, setAthletes] = useState([])
 
   async function handleNameSubmit(e) {
@@ -42,7 +50,7 @@ function Setup() {
     try {
       await apiRequest('/api/squads/mine', {
         method: 'PATCH',
-        body: { name: squadName.trim() },
+        body: { name: squadName.trim(), gender: squadGender },
         getToken,
       })
       setStep('assistant')
@@ -77,25 +85,42 @@ function Setup() {
 
   async function handleAddAthlete(e) {
     e.preventDefault()
-    if (!athleteForm.name.trim()) {
+    const trimmedName = athleteForm.name.trim()
+    if (!trimmedName) {
       setError('Athlete name is required')
       return
     }
+
+    const squadNumber = athleteForm.squad_number ? Number(athleteForm.squad_number) : null
+
+    // Same duplicate guards as the roster page, checked against the athletes
+    // added in this session.
+    if (athletes.some((a) => a.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setError(`${trimmedName} is already on the roster.`)
+      return
+    }
+    if (squadNumber != null && athletes.some((a) => a.squad_number === squadNumber)) {
+      setError(`Squad number ${squadNumber} is already taken.`)
+      return
+    }
+
     setSaving(true)
     setError('')
     try {
       const created = await apiRequest('/api/athletes', {
         method: 'POST',
         body: {
-          name: athleteForm.name.trim(),
-          position: athleteForm.position.trim() || null,
-          squad_number: athleteForm.squad_number ? Number(athleteForm.squad_number) : null,
+          name: trimmedName,
+          position: athleteForm.position || null,
+          squad_number: squadNumber,
+          date_of_birth: athleteForm.date_of_birth || null,
+          contact_info: athleteForm.contact_info.trim() || null,
           email: athleteForm.email.trim() || null,
         },
         getToken,
       })
       setAthletes((prev) => [...prev, created])
-      setAthleteForm({ name: '', position: '', squad_number: '', email: '' })
+      setAthleteForm({ name: '', position: '', squad_number: '', date_of_birth: '', contact_info: '', email: '' })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -160,6 +185,13 @@ function Setup() {
                 autoFocus
               />
             </label>
+            <label className="roster-form-wide">
+              Squad gender
+              <select value={squadGender} onChange={(e) => setSquadGender(e.target.value)}>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </label>
           </div>
           <div className="roster-form-actions">
             <button type="submit" className="btn btn-gold" disabled={saving}>
@@ -219,12 +251,35 @@ function Setup() {
               </label>
               <label>
                 Position
-                <input
-                  type="text"
+                <select
                   value={athleteForm.position}
                   onChange={(e) => setAthleteForm({ ...athleteForm, position: e.target.value })}
-                  placeholder="e.g. Midfielder"
-                />
+                >
+                  <option value="">Select position</option>
+                  <optgroup label="Goalkeeper">
+                    <option value="Goalkeeper">Goalkeeper</option>
+                  </optgroup>
+                  <optgroup label="Defenders">
+                    <option value="Centre-Back">Centre-Back</option>
+                    <option value="Right-Back">Right-Back</option>
+                    <option value="Left-Back">Left-Back</option>
+                    <option value="Wing-Back">Wing-Back</option>
+                    <option value="Sweeper">Sweeper</option>
+                  </optgroup>
+                  <optgroup label="Midfielders">
+                    <option value="Defensive Midfielder">Defensive Midfielder</option>
+                    <option value="Central Midfielder">Central Midfielder</option>
+                    <option value="Attacking Midfielder">Attacking Midfielder</option>
+                    <option value="Right Midfielder">Right Midfielder</option>
+                    <option value="Left Midfielder">Left Midfielder</option>
+                  </optgroup>
+                  <optgroup label="Forwards">
+                    <option value="Right Winger">Right Winger</option>
+                    <option value="Left Winger">Left Winger</option>
+                    <option value="Striker">Striker</option>
+                    <option value="Centre Forward">Centre Forward</option>
+                  </optgroup>
+                </select>
               </label>
               <label>
                 Squad number
@@ -236,17 +291,35 @@ function Setup() {
                 />
               </label>
               <label>
+                Date of birth
+                <input
+                  type="date"
+                  value={athleteForm.date_of_birth}
+                  onChange={(e) => setAthleteForm({ ...athleteForm, date_of_birth: e.target.value })}
+                />
+              </label>
+              <label className="roster-form-wide">
+                Contact info
+                <input
+                  type="text"
+                  value={athleteForm.contact_info}
+                  onChange={(e) => setAthleteForm({ ...athleteForm, contact_info: e.target.value })}
+                  placeholder="Phone or email"
+                />
+              </label>
+              <label className="roster-form-wide">
                 Athlete's login email (optional)
                 <input
                   type="email"
                   value={athleteForm.email}
                   onChange={(e) => setAthleteForm({ ...athleteForm, email: e.target.value })}
+                  placeholder="Sends them an invite email to create their own account"
                 />
               </label>
             </div>
             <div className="roster-form-actions">
               <button type="submit" className="btn btn-gold" disabled={saving}>
-                {saving ? 'Adding...' : 'Add athlete'}
+                {saving ? 'Saving...' : 'Save athlete'}
               </button>
             </div>
           </form>

@@ -1,152 +1,694 @@
-.roster-header {
+/* ---- Page shell (light matchday-grey canvas behind the cards) ---- */
+.roster-page {
+  background: var(--color-canvas);
+  margin: -40px -48px;
+  padding: 40px 48px;
+  min-height: 100vh;
+}
+
+/* ---- Header: eyebrow + title + actions ---- */
+.ros-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 28px;
   gap: 16px;
   flex-wrap: wrap;
+  margin-bottom: 22px;
 }
 
-.roster-error {
-  background: rgba(179, 59, 59, 0.08);
-  border: 1px solid rgba(179, 59, 59, 0.3);
-  color: #b33b3b;
-  padding: 12px 16px;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  margin-bottom: 20px;
+.ros-eyebrow {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-blue);
+  margin-bottom: 2px;
 }
 
-.roster-status {
-  font-size: 14px;
-  padding: 20px 0;
+.ros-title {
+  font-family: var(--font-display);
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--color-ink);
+  margin: 0;
 }
 
-.roster-empty {
-  border: 1px dashed var(--color-line);
-  border-radius: var(--radius);
-  padding: 48px 24px;
-  text-align: center;
-  background: var(--color-chalk);
+.ros-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.roster-form {
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius);
-  background: var(--color-chalk);
-  padding: 24px;
+.ros-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Squad intro strip ---- */
+.ros-hero {
   margin-bottom: 28px;
 }
 
-.roster-form h3 {
-  margin-bottom: 16px;
+.ros-hero-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-blue);
+  margin-bottom: 4px;
 }
 
-.roster-form-grid {
+.ros-hero-title {
+  font-family: var(--font-display);
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1.05;
+  text-transform: uppercase;
+  color: var(--color-ink);
+  margin: 0 0 10px;
+}
+
+.ros-hero-sub {
+  font-size: 15px;
+  color: var(--color-ink-soft);
+  margin: 0;
+}
+
+/* ---- Availability stat cards ---- */
+.ros-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.roster-form-wide {
-  grid-column: 1 / -1;
+.ros-stat-card {
+  background: var(--color-pitch);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-card);
 }
 
-.roster-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
+.ros-stat-label {
+  display: block;
   font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   color: var(--color-ink-soft);
+  margin-bottom: 8px;
 }
 
-.roster-form input {
+.ros-stat-value {
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-ink);
+}
+
+.ros-stat-card-injured {
+  background: rgba(var(--color-lime-rgb), 0.16);
+  border-color: rgba(var(--color-lime-rgb), 0.7);
+}
+
+/* ---- Toolbar: search + status filters ---- */
+.ros-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.roster-search {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+}
+
+.roster-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-ink-soft);
+  pointer-events: none;
+}
+
+.roster-search input {
+  width: 100%;
   font-family: var(--font-body);
   font-size: 15px;
-  padding: 9px 12px;
+  padding: 10px 14px 10px 38px;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   background: var(--color-pitch);
   color: var(--color-ink);
 }
 
-.roster-form input:focus {
+.roster-search input:focus {
   outline: none;
   border-color: var(--color-sky);
   box-shadow: 0 0 0 3px var(--color-sky-soft);
 }
 
-.roster-form-actions {
+.ros-filters {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
+  align-items: center;
+  gap: 6px;
 }
 
-.roster-grid {
+.ros-filters-icon {
+  color: var(--color-ink-soft);
+  margin-right: 4px;
+}
+
+.ros-filter-btn {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ros-filter-btn:hover {
+  color: var(--color-ink);
+}
+
+.ros-filter-active,
+.ros-filter-active:hover {
+  background: var(--color-ink-fixed);
+  color: var(--color-pitch-fixed);
+}
+
+/* ---- Athlete cards ---- */
+.ros-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 20px;
 }
 
-.athlete-card {
+.ros-card {
+  position: relative;
   border: 1px solid var(--color-line);
   border-radius: var(--radius);
-  padding: 20px;
   background: var(--color-pitch);
   box-shadow: var(--shadow-card);
+  overflow: hidden;
   transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
-.athlete-card:hover {
+.ros-card:hover {
   transform: translateY(-2px);
-  border-color: var(--color-gold);
+  border-color: var(--color-blue);
 }
 
-.athlete-card-main {
+.ros-card-main {
   display: block;
   text-decoration: none;
   color: inherit;
-  cursor: pointer;
+  padding: 26px 26px 0;
 }
 
-.athlete-card-main:hover {
+.ros-card-main:hover {
   text-decoration: none;
 }
 
-.athlete-number {
+.ros-card-ghost {
+  position: absolute;
+  top: 12px;
+  left: 22px;
   font-family: var(--font-display);
-  font-size: 42px;
+  font-size: 66px;
   font-weight: 700;
-  color: var(--color-gold);
   line-height: 1;
-  margin-bottom: 10px;
+  color: rgba(var(--color-ink-rgb), 0.07);
+  pointer-events: none;
 }
 
-.athlete-info h3 {
-  margin-bottom: 4px;
-}
-
-.athlete-position {
-  display: inline-block;
-  font-size: 13px;
+.ros-card-pill {
+  position: absolute;
+  top: 22px;
+  right: 22px;
   font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-sky);
-  border-bottom: 2px solid var(--color-sky);
-  padding-bottom: 2px;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
 }
 
-.athlete-actions {
+.ros-card-pill-ready {
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
+}
+
+.ros-card-pill-managed {
+  background: var(--color-lime);
+  color: var(--color-ink-fixed);
+}
+
+.ros-card-pill-injured {
+  background: #b33b3b;
+  color: var(--color-pitch-fixed);
+}
+
+/* Wrapper keeps the avatar's footprint identical whether initials or a
+   photo is shown. display: block is required for the auto margins to centre
+   it — as a plain inline span it collapses to zero width and drags the
+   avatar left over the card's ghost number. */
+.ros-avatar-wrap {
+  display: block;
+  position: relative;
+  width: 88px;
+  margin: 34px auto 26px;
+}
+
+.ros-card-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ros-card-avatar-photo {
+  overflow: hidden;
+}
+
+.ros-card-avatar-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ros-photo-btn {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--color-lime);
+  color: var(--color-ink-fixed);
+  border: 2px solid var(--color-pitch-fixed);
+  box-shadow: 0 2px 8px rgba(var(--color-ink-rgb), 0.28);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.ros-photo-btn:hover {
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
+  transform: scale(1.06);
+}
+
+.ros-photo-btn:focus-visible {
+  outline: 2px solid var(--color-blue);
+  outline-offset: 2px;
+}
+
+.ros-photo-btn-saving {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.ros-card-body {
+  border-top: 1px solid var(--color-line);
+  margin: 0 -26px;
+  padding: 16px 26px 20px;
+}
+
+.ros-card-toprow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ros-card-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.ros-card-score {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.ros-card-pos {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-blue);
+  margin-top: 3px;
+}
+
+.ros-card-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(var(--color-ink-rgb), 0.08);
+  margin: 14px 0 16px;
+  overflow: hidden;
+}
+
+.ros-card-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-blue);
+}
+
+.ros-card-bar-injured {
+  background: #b33b3b;
+}
+
+.ros-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.ros-card-profile {
+  font-weight: 600;
+  color: var(--color-blue);
+}
+
+.ros-card-actions {
   display: flex;
   gap: 8px;
-  margin-top: 16px;
+  padding: 0 26px 20px;
 }
 
-.roster-added-confirmation p {
-  margin-bottom: 4px;
+/* ---- Player account status + invite (coach only) ---- */
+.ros-account {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 26px 0;
+  border-top: 1px solid var(--color-line);
+  margin-top: 0;
+}
+
+.ros-account-chip {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--color-ink-rgb), 0.08);
+  color: var(--color-ink-soft);
+}
+
+.ros-account-chip-joined {
+  background: var(--color-blue-fixed);
+  color: var(--color-pitch-fixed);
+}
+
+.ros-account-chip-invited {
+  background: var(--color-lime);
+  color: var(--color-ink-fixed);
+}
+
+.ros-invite-btn {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 12px;
+}
+
+.ros-account-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.ros-account-form input {
+  flex: 1;
+  min-width: 200px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+  color: var(--color-ink);
+}
+
+.ros-account-form input:focus {
+  outline: none;
+  border-color: var(--color-sky);
+  box-shadow: 0 0 0 3px var(--color-sky-soft);
+}
+
+.ros-account-error {
+  width: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: #b33b3b;
+}
+
+/* Credentials panel — dark card, so the fixed ink token keeps it readable
+   in dark theme too. */
+.ros-credentials-wrap {
+  margin: 12px 26px 20px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--color-ink-fixed);
+}
+
+.ros-credentials {
+  background: var(--color-ink-fixed);
+  color: var(--color-pitch-fixed);
+  padding: 16px 18px;
+}
+
+.ros-credentials-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-lime);
+  margin: 0 0 6px;
+}
+
+.ros-credentials-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 12px;
+}
+
+.ros-cred-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.ros-cred-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.ros-cred-value {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-pitch-fixed);
+  word-break: break-all;
+  flex: 1;
+}
+
+.ros-copy-btn {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: var(--color-pitch-fixed);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ros-copy-btn:hover {
+  background: var(--color-lime);
+  border-color: var(--color-lime);
+  color: var(--color-ink-fixed);
+}
+
+.ros-credentials-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 12px 0 0;
+}
+
+.ros-credentials-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 18px 14px;
+  background: var(--color-ink-fixed);
+}
+
+/* btn-ghost's ink text/border would vanish on the dark surface in light
+   theme — keep the buttons readable on the credentials panel. */
+.ros-credentials-actions .btn-ghost {
+  color: var(--color-pitch-fixed);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ros-credentials-actions .btn-ghost:hover {
+  border-color: var(--color-lime);
+}
+
+/* Inside the light add-athlete confirmation, the credentials panel needs its
+   own surface — reuse the same block but with padding handled by the wrap. */
+.roster-added-confirmation .ros-credentials {
+  margin: 12px 0 4px;
+  border-radius: var(--radius);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 980px) {
+  .ros-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .roster-page {
+    margin: -24px -20px;
+    padding: 24px 20px;
+  }
+
+  .ros-title {
+    font-size: 40px;
+  }
+
+  .ros-hero-title {
+    font-size: 30px;
+  }
+
+  .ros-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .roster-search {
+    max-width: none;
+  }
+
+  .ros-filters {
+    flex-wrap: wrap;
+  }
+
+  .ros-card-main {
+    padding: 22px 18px 0;
+  }
+
+  .ros-card-body {
+    margin: 0 -18px;
+    padding: 14px 18px 18px;
+  }
+
+  .ros-card-actions {
+    padding: 0 18px 18px;
+  }
+
+  .ros-account {
+    padding: 12px 18px 0;
+  }
+
+  .ros-credentials-wrap {
+    margin: 12px 18px 18px;
+  }
+}
+
+/* Dark theme: ghost numbers, availability tracks and status chips switch to
+   white tints so they stay visible on the navy cards. */
+[data-theme="dark"] .ros-card-ghost {
+  color: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="dark"] .ros-card-bar {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .ros-card-bar-injured {
+  background: #e5737a;
+}
+
+[data-theme="dark"] .ros-card-pill-injured {
+  background: #c05050;
+}
+
+[data-theme="dark"] .ros-account-chip {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .ros-account-error {
+  color: #e5737a;
 }

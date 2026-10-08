@@ -44,4 +44,5 @@ sidebar_position: 1
 |---|---|
 | **[football-data.org](../third-party/football-data)** | Professional fixtures and standings for the Pro Fixtures tab. |
 | **Open-Meteo** | Free geocoding and weather forecasts for event venues (no API key required). Implemented in `backend/src/routes/weather.js` and consumed by `WeatherWidget.jsx`. |
+| **[EA FC player ratings dataset](../third-party/player-ratings)** | Free, key-less lookup (Hugging Face datasets-server) of an EA FC-style overall rating per player, used to weight the 90-minute match simulation for **Quick Sim** and **Simulate Match**. Implemented in `backend/src/lib/ratings.js`; players the dataset does not know get a position-based estimate instead. |
 | **[Resend](../third-party/resend)** | Transactional email delivery for assistant invites and event reminders. Configured via `RESEND_API_KEY` and `EMAIL_FROM`; if absent, emails are skipped gracefully. Free accounts can only send to your own email address unless a domain is verified. |

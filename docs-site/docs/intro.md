@@ -28,6 +28,11 @@ handing them full control of the roster.
 - **Live event logging** — during an event, log scoring moments, penalties,
   and other notable actions against the athlete responsible, in real time.
   Entries can be edited or undone (soft-deleted) if a mistake is made.
+- **Match simulation** — Quick Sim and Simulate Match generate a full 90-minute
+  match from the squad's saved lineup, weighted by each player's rating
+  (external ratings dataset, or a position-based estimate for players it does
+  not know), and replay it through the same logging path as a hand-logged
+  match.
 - **Derived statistics** — per-athlete and per-event stats (goals, cards,
   appearances, and more) are calculated from the logged entries themselves,
   not entered manually.

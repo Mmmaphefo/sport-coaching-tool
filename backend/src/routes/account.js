@@ -1,11 +1,10 @@
 const express = require('express');
-const { Pool } = require('pg');
+const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
 const { getOrCreateUserId } = require('./_squad');
 const { deleteUserByClerkId } = require('../lib/userDeletion');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // GET /api/account/me — role and basic profile info for the logged-in user.
 router.get('/me', requireAuth(), async (req, res) => {
@@ -39,6 +38,25 @@ router.get('/me', requireAuth(), async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching account:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /api/account/role — set the user's role (coach, assistant, athlete).
+router.patch('/role', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkId } = getAuth(req);
+    const userId = await getOrCreateUserId(pool, clerkId);
+    const { role } = req.body;
+
+    if (!['coach', 'assistant', 'athlete'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, userId]);
+    res.json({ role });
+  } catch (err) {
+    console.error('Error updating role:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

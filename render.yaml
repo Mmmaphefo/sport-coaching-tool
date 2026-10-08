@@ -1,0 +1,41 @@
+# Render Blueprint for the Kickstat backend API.
+# The PostgreSQL database lives on Neon's free tier (never expires), so
+# DATABASE_URL is pasted in when the blueprint is applied.
+services:
+  - type: web
+    name: kickstat-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: npm ci
+    # Runs pending migrations on every deploy, then starts the API.
+    startCommand: npx node-pg-migrate up --no-check-order && node src/app.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Neon connection string — use Neon's "direct connection" URL
+      # (the one without "-pooler" in the host), migrations need it.
+      - key: DATABASE_URL
+        sync: false
+      # Copied from backend/.env on a developer machine.
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      # Optional: only needed once Clerk webhooks point at this deployment.
+      - key: CLERK_WEBHOOK_SECRET
+        sync: false
+      # Public URL of the Cloudflare Pages frontend — used by CORS and by
+      # invite/reminder email links (e.g. https://kickstat.pages.dev).
+      - key: FRONTEND_URL
+        sync: false
+      # Optional: without these, emails are skipped with a log line.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false

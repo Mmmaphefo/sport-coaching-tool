@@ -1,0 +1,12 @@
+<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <path d="M255,150 L100,124 L120,150 L100,176 Z" fill="#D0FF41"/>
+  <g transform="translate(30,70)">
+    <path d="M0,0 L40,0 L40,160 L0,160 Z" fill="#0250B0"/>
+    <path d="M40,72 L112,6 L160,6 L82,90 Z" fill="#0250B0"/>
+    <path d="M40,86 L114,160 L162,160 L82,88 Z" fill="#0250B0"/>
+  </g>
+  <g transform="translate(220,150)">
+    <circle r="40" fill="#FFFFFF" stroke="#0B1B33" stroke-width="3.2"/>
+    <polygon points="0,-16 15.2,-4.8 9.6,12.8 -9.6,12.8 -15.2,-4.8" fill="#0B1B33"/>
+  </g>
+</svg>

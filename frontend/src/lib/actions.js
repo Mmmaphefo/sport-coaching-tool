@@ -13,10 +13,10 @@ export const ACTION_TYPES = [
   { value: 'other', label: 'Other', scoring: false },
 ]
 
-// Quick-tap actions shown on the Live Match dashboard.
+// Quick-tap actions shown on the Live Match dashboard. Assists are not a
+// standalone action: they are picked as part of logging the goal itself.
 export const QUICK_ACTIONS = [
   { value: 'goal', label: 'Goal', scoring: true, tone: 'goal' },
-  { value: 'assist', label: 'Assist', scoring: false, tone: 'neutral' },
   { value: 'penalty', label: 'Penalty', scoring: false, tone: 'orange' },
   { value: 'shot_on_target', label: 'Shot on Target', scoring: false, tone: 'shot' },
   { value: 'save', label: 'Save', scoring: false, tone: 'neutral' },

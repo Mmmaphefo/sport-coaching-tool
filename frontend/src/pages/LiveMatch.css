@@ -14,8 +14,8 @@
   padding: 24px 28px;
   margin-bottom: 32px;
   border-radius: var(--radius);
-  background: var(--color-ink);
-  color: var(--color-pitch);
+  background: var(--color-ink-fixed);
+  color: var(--color-pitch-fixed);
 }
 
 .live-team {
@@ -96,7 +96,7 @@
 
 .live-action-shot {
   background: #a8d94b;
-  color: var(--color-ink);
+  color: var(--color-ink-fixed);
 }
 
 .live-action-neutral {
@@ -107,7 +107,7 @@
 
 .live-action-yellow {
   background: #e8b930;
-  color: var(--color-ink);
+  color: var(--color-ink-fixed);
 }
 
 .live-action-red {
@@ -256,3 +256,534 @@
 .live-timeline-minute--goal { color: #1f6f4a; }
 .live-timeline-minute--card { color: #b3392f; }
 .live-timeline-minute--penalty { color: #e07b2e; }
+
+/* Formation chip next to the team name on the scoreboard */
+.live-formation-chip {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-lime);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* Pre-match / scheduled info banner */
+.live-note {
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-chalk);
+  font-size: 14px;
+}
+
+/* Explains why a due match did not kick off after the XI was saved. */
+.live-note-warn {
+  border-color: rgba(224, 122, 122, 0.45);
+  background: rgba(224, 122, 122, 0.12);
+}
+
+/* Quick Sim / Simulate Match controls in the page header */
+.live-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Simulation progress: fetching ratings, then the two-minute replay */
+.live-sim-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-chalk);
+}
+
+.live-sim-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.live-sim-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(var(--color-lime-rgb), 0.18);
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.live-sim-meta {
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.live-sim-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(var(--color-ink-rgb), 0.12);
+  overflow: hidden;
+}
+
+.live-sim-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-lime-deep), var(--color-lime));
+  transition: width 0.4s ease;
+}
+
+/* Post-simulation summary strip */
+.live-sim-result {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  border: 1px solid var(--color-line);
+  border-left: 4px solid var(--color-lime);
+  border-radius: var(--radius-sm);
+  background: var(--color-chalk);
+}
+
+.live-sim-result-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.live-sim-result-line {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--color-ink);
+}
+
+.live-sim-result-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+/* Active quick-action highlight while a logging flow runs */
+.live-action-btn.is-active {
+  outline: 3px solid var(--color-lime);
+  outline-offset: 2px;
+}
+
+/* Logging flow panel: who scored, who assisted, who comes on */
+.live-flow-panel {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-chalk);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.live-flow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.live-flow-hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #b33b3b;
+}
+
+.live-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+/* Bench rows under the pitch */
+.live-bench {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 20px 0 8px;
+}
+
+.live-bench-col {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-chalk);
+  padding: 14px 16px;
+}
+
+.live-bench-title {
+  display: block;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  margin-bottom: 10px;
+}
+
+.live-bench-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.live-bench-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 5px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-pitch);
+  color: var(--color-ink);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease;
+}
+
+.live-bench-chip.is-muted {
+  opacity: 0.45;
+}
+
+.live-bench-chip.is-pickable {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 2px rgba(2, 80, 176, 0.18);
+}
+
+.live-bench-chip.is-pickable:hover {
+  border-color: var(--color-blue);
+}
+
+.live-bench-img,
+.live-bench-initials {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.live-bench-img {
+  object-fit: cover;
+  display: block;
+}
+
+.live-bench-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-ink-fixed);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.live-bench-initials-opponent {
+  background: var(--color-silver);
+  color: var(--color-ink-fixed);
+}
+
+.live-bench-name {
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-bench-rating {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.live-bench-empty {
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.live-bench-opponent {
+  border-style: dashed;
+  font-style: italic;
+  color: var(--color-ink-soft);
+}
+
+/* Extra timeline detail lines (assist name, sub-on name) */
+.live-timeline-detail {
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.live-timeline-pending {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #d69e2e;
+  border: 1px solid rgba(214, 158, 46, 0.5);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* -------------------------------------------------------------------------
+   Lineup wizard (pre-match screen)
+------------------------------------------------------------------------- */
+.live-wizard-head {
+  margin-bottom: 18px;
+}
+
+.live-wizard-hint {
+  margin-top: 6px;
+  font-size: 14px;
+  max-width: 720px;
+}
+
+.wz-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.wz-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.wz-tab.is-active {
+  border-color: var(--color-ink);
+  background: var(--color-ink-fixed);
+  color: #ffffff;
+}
+
+.wz-tab-status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-chalk);
+  color: var(--color-ink-soft);
+  font-size: 12px;
+}
+
+.wz-tab.is-active .wz-tab-status {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.wz-tab-status.is-valid {
+  background: rgba(31, 111, 74, 0.14);
+  color: #1f6f4a;
+}
+
+.wz-tab.is-active .wz-tab-status.is-valid {
+  background: var(--color-lime);
+  color: var(--color-ink-fixed);
+}
+
+.live-wizard-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.wz-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.wz-roster-title {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  margin-bottom: 4px;
+}
+
+.wz-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+}
+
+.wz-chip.is-xi {
+  border-color: var(--color-blue);
+  background: rgba(2, 80, 176, 0.06);
+}
+
+.wz-chip.is-bench {
+  border-color: var(--color-lime-deep);
+  background: rgba(168, 194, 51, 0.1);
+}
+
+.wz-chip-name {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wz-chip-actions {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wz-pill {
+  padding: 3px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-pitch);
+  color: var(--color-ink-soft);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.wz-pill.is-active {
+  background: var(--color-ink-fixed);
+  border-color: var(--color-ink-fixed);
+  color: #ffffff;
+}
+
+.wz-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wz-roster-empty,
+.wz-roster-note {
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.wz-pitch-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.wz-formation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.wz-formation-label {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
+.wz-formation-value {
+  padding: 2px 12px;
+  border-radius: 999px;
+  background: var(--color-ink-fixed);
+  color: var(--color-lime);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.wz-actions {
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 860px) {
+  .live-wizard-body {
+    grid-template-columns: 1fr;
+  }
+
+  .wz-roster {
+    max-height: 300px;
+  }
+}
+
+.offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(214, 158, 46, 0.12);
+  border: 1px solid rgba(214, 158, 46, 0.4);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: #d69e2e;
+}
+
+.offline-sync-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-color: rgba(214, 158, 46, 0.5);
+  color: #d69e2e;
+}
+
+/* Dark theme: the sim progress track's navy tint would vanish on the navy
+   card, so it switches to a white tint. */
+[data-theme="dark"] .live-sim-bar {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Dark theme: lift the light-tuned error red for the navy card. */
+[data-theme="dark"] .live-flow-hint {
+  color: #e5737a;
+}

@@ -63,7 +63,7 @@ async function sendEventReminders(pool) {
         const eventDate = new Date(event.event_date).toLocaleString();
         const eventTitle = event.title || event.opponent || 'Upcoming event';
 
-        await resend.emails.send({
+        const { error } = await resend.emails.send({
           from: process.env.EMAIL_FROM || 'KickStat <reminders@resend.dev>',
           to,
           subject: `Reminder: ${eventTitle} is coming up`,
@@ -74,6 +74,15 @@ async function sendEventReminders(pool) {
             <p><a href="${process.env.FRONTEND_URL}/events/${event.id}">View event details</a></p>
           `,
         });
+
+        if (error) {
+          // Resend returns API-level rejections (unverified/sandbox sender
+          // domain, invalid recipient, etc.) as `{ error }` in the response
+          // rather than throwing — without this check, a rejected send fell
+          // through to the success branch below and was marked as sent.
+          console.error(`Resend rejected the reminder for event ${event.id}:`, error.message || error);
+          continue;
+        }
 
         await pool.query('UPDATE events SET reminder_sent = true WHERE id = $1', [event.id]);
         console.log(`Reminder sent for event ${event.id} to ${to}`);

@@ -4,7 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
+import { useConfirm } from '../lib/confirm'
 import WeatherWidget from '../components/WeatherWidget'
+import VenueMapEditor from '../components/VenueMapEditor'
+import AddressSearchInput from '../components/AddressSearchInput'
 import './Events.css'
 
 const emptyForm = {
@@ -16,6 +19,8 @@ const emptyForm = {
   event_date: '',
   duration_minutes: '90',
   location: '',
+  lat: null,
+  lng: null,
 }
 
 const statusLabel = {
@@ -34,6 +39,12 @@ const formatLabel = {
   tournament: 'Tournament',
 }
 
+const rsvpLabel = {
+  available: 'You\u2019re in',
+  unavailable: 'You\u2019re out',
+  maybe: 'Maybe',
+}
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function dayKey(date) {
@@ -46,6 +57,7 @@ function dayKey(date) {
 function Events() {
   const { getToken } = useAuth()
   const navigate = useNavigate()
+  const confirm = useConfirm()
 
   // --- My Events state ---
   const [events, setEvents] = useState([])
@@ -61,15 +73,39 @@ function Events() {
   const [calendarDate, setCalendarDate] = useState(() => new Date())
   const [dayPopup, setDayPopup] = useState(null) // { key, label, events } | null
 
+  // --- Gender filter for matchmaking ---
+  const [genderFilter, setGenderFilter] = useState(false)
+
+  // Players see the same schedule without the staff actions (scheduling,
+  // matchmaking filters, joining leagues).
+  const [role, setRole] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiRequest('/api/account/me', { getToken })
+      .then((me) => {
+        if (!cancelled) setRole(me.role)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [getToken])
+
+  const isAthlete = role === 'athlete'
+
   const rosterBelowMinimum = !!(
     squad && squad.athlete_count < squad.min_roster_size
   )
 
-  const loadEvents = useCallback(async () => {
-    setLoading(true)
+  const loadEvents = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true)
+    }
     setError('')
     try {
-      const data = await apiRequest('/api/events', { getToken })
+      const params = genderFilter ? '?gender_filter=true' : ''
+      const data = await apiRequest(`/api/events${params}`, { getToken })
       setEvents(data)
     } catch (err) {
       setError(err.message)
@@ -91,6 +127,10 @@ function Events() {
   useEffect(() => {
     loadEvents()
     loadSquad()
+    // Re-poll so events the backend auto-transitioned to live (the sweep in
+    // app.js) show up without a manual refresh.
+    const poll = setInterval(() => loadEvents(true), 30000)
+    return () => clearInterval(poll)
   }, [loadEvents, loadSquad])
 
   function openForm() {
@@ -130,6 +170,41 @@ function Events() {
       event_date: form.event_date,
       duration_minutes: form.duration_minutes ? Number(form.duration_minutes) : 90,
       location: form.location.trim() || null,
+      // Precise venue pin — sent together, nulls included, exactly like the
+      // edit form so a pin dropped here persists on creation.
+      location_lat: form.lat,
+      location_lng: form.lng,
+    }
+
+    // Advisory pre-check against the calendar before anything is written
+    // (events and joined-league fixtures alike). Clashes never block a
+    // save — a coach may mean to double-book — they just ask first. If the
+    // check itself can't run, creation still goes ahead: the server returns
+    // the same list with the response.
+    if (!isLeague) {
+      try {
+        const clashes = await apiRequest(
+          `/api/events/clashes?event_date=${encodeURIComponent(form.event_date)}&duration_minutes=${body.duration_minutes}`,
+          { getToken }
+        )
+        if (clashes.length > 0) {
+          const names = clashes
+            .slice(0, 3)
+            .map((c) => `${c.label} (${new Date(c.event_date).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })})`)
+            .join('; ')
+          const proceed = await confirm({
+            title: 'This time slot is already busy',
+            message: `Overlaps ${clashes.length} item${clashes.length === 1 ? '' : 's'} already on the calendar: ${names}${clashes.length > 3 ? ` and ${clashes.length - 3} more` : ''}. Schedule anyway?`,
+            confirmLabel: 'Schedule anyway',
+          })
+          if (!proceed) {
+            setSaving(false)
+            return
+          }
+        }
+      } catch {
+        // Advisory only — carry on if the pre-check itself failed.
+      }
     }
 
     try {
@@ -168,12 +243,38 @@ function Events() {
       navigate(`/events/${event.id}`)
       return
     }
-    navigate(event.status === 'live' ? `/live/${event.id}` : `/events/${event.id}`)
+    // Players never enter the live match centre — it's a staff logging UI.
+    navigate(event.status === 'live' && !isAthlete ? `/live/${event.id}` : `/events/${event.id}`)
   }
 
   const isLeagueForm = form.format === 'league' || form.format === 'tournament'
 
   // --- Calendar helpers ---
+
+  // Mirrors the server's clash rule for display: two non-cancelled events on
+  // this calendar whose scheduled windows overlap. League/tournament
+  // containers are excluded — their date is just when the competition
+  // opens, and clashes against joined-league fixtures are reported on the
+  // event's own page.
+  const clashingEventIds = useMemo(() => {
+    const ids = new Set()
+    const active = events.filter(
+      (e) => e.status !== 'cancelled' && e.format !== 'league' && e.format !== 'tournament' && e.event_date
+    )
+    for (let i = 0; i < active.length; i++) {
+      const aStart = new Date(active[i].event_date).getTime()
+      const aEnd = aStart + (active[i].duration_minutes || 90) * 60000
+      for (let j = i + 1; j < active.length; j++) {
+        const bStart = new Date(active[j].event_date).getTime()
+        const bEnd = bStart + (active[j].duration_minutes || 90) * 60000
+        if (aStart < bEnd && bStart < aEnd) {
+          ids.add(active[i].id)
+          ids.add(active[j].id)
+        }
+      }
+    }
+    return ids
+  }, [events])
 
   const eventsByDay = useMemo(() => {
     const map = {}
@@ -250,47 +351,118 @@ function Events() {
     })
   }
 
+  // Row title: "Squad — Opponent" for matches once the squad name is known;
+  // falls back to the stored title otherwise (leagues keep their own name).
+  function eventDisplayTitle(event) {
+    if (event.format === 'league' || event.format === 'tournament') {
+      return event.title || 'League'
+    }
+    if (event.opponent && squad?.name) return `${squad.name} — ${event.opponent}`
+    return event.title || event.opponent || 'Training session'
+  }
+
+  function eventDateParts(event) {
+    if (!event.event_date) return { day: 'TBC', time: '' }
+    const d = new Date(event.event_date)
+    return {
+      day: `${d.getDate()} ${d.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}`,
+      time: d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }),
+    }
+  }
+
   const monthLabel = calendarDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+
+  // Hero strip shows the CURRENT month, independent of the calendar's navigable month.
+  const heroMonthLabel = new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+
+  // Earliest selectable kickoff is "now" — mirroring the backend's
+  // "cannot schedule an event in the past" validation.
+  const nowLocal = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity -- one-time snapshot for the datetime-local `min` attribute, computed once on mount
+    const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    return d.toISOString().slice(0, 16)
+  }, [])
 
   return (
     <Layout>
-      <div className="roster-header">
-        <div>
-          <span className="dashboard-eyebrow">Matchday</span>
-          <h1>Events</h1>
+      <div className="events-page">
+      <header className="evt-head">
+        <div className="evt-head-text">
+          <span className="evt-eyebrow">Schedule and fixtures</span>
+          <h1 className="evt-title-main">Events</h1>
         </div>
-        <div className="roster-header-actions">
-          <div className="view-toggle" role="tablist" aria-label="Events view">
+        <div className="evt-head-actions">
+          {!isAthlete && (
             <button
               type="button"
-              className={`view-toggle-btn${viewMode === 'list' ? ' view-toggle-btn-active' : ''}`}
-              onClick={() => setViewMode('list')}
-              aria-pressed={viewMode === 'list'}
+              className={`evt-gender-btn${genderFilter ? ' evt-gender-btn-active' : ''}`}
+              onClick={() => setGenderFilter((v) => !v)}
+              title="Filter open events by compatible gender"
             >
-              List
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="8" r="5" />
+                <path d="M12 13v8M9 18h6" />
+              </svg>
+              {genderFilter ? 'Gender on' : 'Gender filter'}
             </button>
-            <button
-              type="button"
-              className={`view-toggle-btn${viewMode === 'calendar' ? ' view-toggle-btn-active' : ''}`}
-              onClick={() => setViewMode('calendar')}
-              aria-pressed={viewMode === 'calendar'}
-            >
-              Calendar
+          )}
+          {!isAthlete && (
+            <button type="button" className="evt-schedule-btn" onClick={openForm}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" focusable="false">
+                <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Schedule event
             </button>
-          </div>
-          <button className="btn btn-gold" onClick={openForm}>
-            Schedule event
-          </button>
+          )}
         </div>
-      </div>
+      </header>
 
-      {rosterBelowMinimum && (
+      <section className="evt-hero">
+        <span className="evt-hero-label">{heroMonthLabel}</span>
+        <h2 className="evt-hero-title">Control the week ahead</h2>
+        <p className="evt-hero-sub">
+          Training, preparation and league fixtures stay in one operational calendar.
+        </p>
+      </section>
+
+      {rosterBelowMinimum && !isAthlete && (
         <div className="roster-error">
           Your roster has {squad.athlete_count} athlete{squad.athlete_count === 1 ? '' : 's'}, but you need at
           least {squad.min_roster_size} to schedule or join a match, league, or tournament. Training sessions
           don't require the full minimum.
         </div>
       )}
+
+      {/* List/calendar toggle */}
+      <div className="evt-toolbar">
+        <div className="view-toggle" role="tablist" aria-label="Events view">
+            <button
+              type="button"
+              className={`view-toggle-btn${viewMode === 'list' ? ' view-toggle-btn-active' : ''}`}
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+              aria-label="List view"
+              title="List view"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+                <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn${viewMode === 'calendar' ? ' view-toggle-btn-active' : ''}`}
+              onClick={() => setViewMode('calendar')}
+              aria-pressed={viewMode === 'calendar'}
+              aria-label="Calendar view"
+              title="Calendar view"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+                <rect x="1.5" y="2.5" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M1.5 6h13M5 1v3M11 1v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+      </div>
 
       {error && <div className="roster-error">{error}</div>}
 
@@ -358,6 +530,7 @@ function Events() {
               Date &amp; time
               <input
                 type="datetime-local"
+                min={nowLocal}
                 value={form.event_date}
                 onChange={(e) => setForm({ ...form, event_date: e.target.value })}
                 required
@@ -374,16 +547,36 @@ function Events() {
             </label>
             <label>
               Location
-              <input
-                type="text"
+              {/* The single address entry — suggestions refine as the coach
+                  types; choosing one drops the pin, centres the map and
+                  loads the venue weather below. */}
+              <AddressSearchInput
                 value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                onChange={(text) => setForm((f) => ({ ...f, location: text }))}
+                onPick={({ name, lat, lng }) => setForm((f) => ({ ...f, location: name, lat, lng }))}
+                proximity={
+                  form.lat !== null && form.lng !== null
+                    ? { lat: Number(form.lat), lng: Number(form.lng) }
+                    : undefined
+                }
                 placeholder="e.g. Wits Main Oval, Johannesburg"
               />
             </label>
           </div>
 
-          <WeatherWidget location={form.location} compact />
+          <div className="roster-form-wide">
+            <span className="event-form-map-heading">Pitch pin — chosen from the address above; drag the pin or the map to fine-tune</span>
+            <VenueMapEditor
+              latitude={form.lat}
+              longitude={form.lng}
+              label={form.location}
+              searchable={false}
+              onChange={({ lat, lng }) => setForm((f) => ({ ...f, lat, lng }))}
+              onAddress={(address) => setForm((f) => ({ ...f, location: address }))}
+            />
+          </div>
+
+          <WeatherWidget location={form.location} latitude={form.lat} longitude={form.lng} compact />
           <div className="roster-form-actions">
             <button type="button" className="btn btn-ghost" onClick={closeForm}>
               Cancel
@@ -404,95 +597,154 @@ function Events() {
         </form>
       )}
 
+      {/* Events list / calendar */}
       {loading ? (
-        <Loader label="Loading events..." />
-      ) : events.length === 0 ? (
-        <div className="roster-empty">
-          <p>No events yet. Schedule your first match or training session.</p>
-        </div>
-      ) : viewMode === 'list' ? (
-        <div className="events-grid">
-          {events.map((event) => (
-            <div key={event.id} className={`event-card event-card-${event.status}`}>
-              <button
-                type="button"
-                className="event-card-main"
-                onClick={() => navigateToEvent(event)}
-              >
-                <span className={`event-status event-status-${event.status}`}>
-                  {statusLabel[event.status] || event.status}
-                </span>
-                <span className="event-card-format">{formatLabel[event.format] || event.format}</span>
-                <h3 className="event-card-title">{event.title || event.opponent || 'Training session'}</h3>
-                <span className="event-card-date">
-                  {event.format === 'league' || event.format === 'tournament'
-                    ? `${event.team_count || 0} / ${event.required_teams || '?'} teams joined`
-                    : new Date(event.event_date).toLocaleString()}
-                </span>
-                {event.location && <span className="event-card-location">{event.location}</span>}
+          <Loader label="Loading events..." />
+        ) : events.length === 0 ? (
+          <div className="roster-empty">
+            <p>
+              {isAthlete
+                ? 'No events scheduled yet. Your coach\u2019s fixtures and training sessions will appear here.'
+                : 'No events yet. Schedule your first match or training session.'}
+            </p>
+          </div>
+        ) : viewMode === 'list' ? (
+          <div className="events-rows">
+            {events.map((event) => {
+              const dateParts = eventDateParts(event)
+              const isLeagueEvent = event.format === 'league' || event.format === 'tournament'
+              return (
+                <div key={event.id} className={`evt-row evt-row-${event.status}`}>
+                  <button
+                    type="button"
+                    className="evt-row-main"
+                    onClick={() => navigateToEvent(event)}
+                  >
+                    <span className="evt-date">
+                      <span className="evt-date-day">{dateParts.day}</span>
+                      {dateParts.time && <span className="evt-date-time">{dateParts.time}</span>}
+                    </span>
+                    <span className="evt-info">
+                      <span className="evt-tags">
+                        <span className="evt-tag">{formatLabel[event.format] || event.format}</span>
+                        <span className={`event-status event-status-${event.status}`}>
+                          {statusLabel[event.status] || event.status}
+                        </span>
+                        {isAthlete && event.my_rsvp && (
+                          <span className={`evt-tag evt-tag-rsvp evt-tag-rsvp-${event.my_rsvp}`}>
+                            {rsvpLabel[event.my_rsvp] || event.my_rsvp}
+                          </span>
+                        )}
+                        {event.gender && (
+                          <span className={`evt-tag evt-tag-gender evt-tag-gender-${event.gender}`}>
+                            {event.gender === 'male' ? '♂' : '♀'} {event.gender}
+                          </span>
+                        )}
+                        {clashingEventIds.has(event.id) && (
+                          <span className="evt-tag evt-tag-clash" title="Overlaps another event on this calendar">
+                            Clash
+                          </span>
+                        )}
+                      </span>
+                      <h3 className="evt-name">{eventDisplayTitle(event)}</h3>
+                      <span className="evt-meta">
+                        {isLeagueEvent ? (
+                          <span>{`${event.team_count || 0} / ${event.required_teams || '?'} teams joined`}</span>
+                        ) : (
+                          <>
+                            {(event.available_count > 0 || event.unavailable_count > 0 || event.maybe_count > 0) && (
+                              <span className="evt-rsvp" title="Player availability (RSVPs)">
+                                {event.available_count} in · {event.unavailable_count} out
+                                {event.maybe_count > 0 ? ` · ${event.maybe_count} maybe` : ''}
+                              </span>
+                            )}
+                            {event.location && (
+                              <span className="evt-loc">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" focusable="false">
+                                  <path d="M6 10.5S2.5 7.6 2.5 5a3.5 3.5 0 1 1 7 0c0 2.6-3.5 5.5-3.5 5.5Z" stroke="currentColor" strokeWidth="1.2" />
+                                  <circle cx="6" cy="5" r="1.2" stroke="currentColor" strokeWidth="1.2" />
+                                </svg>
+                                {event.location}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    </span>
+                  </button>
+                  <div className="evt-actions">
+                    {!isAthlete && event.status === 'open' && event.team_count < event.required_teams && (
+                      <button
+                        type="button"
+                        className="btn btn-gold btn-join"
+                        onClick={() => handleJoin(event.id)}
+                        disabled={rosterBelowMinimum}
+                        title={rosterBelowMinimum ? `Needs at least ${squad?.min_roster_size} athletes on the roster` : undefined}
+                      >
+                        Join
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => navigateToEvent(event)}
+                    >
+                      Details
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="calendar-wrap">
+            <div className="calendar-header">
+              <button type="button" className="calendar-nav-btn" onClick={() => goToMonth(-1)} aria-label="Previous month">
+                &larr;
               </button>
-              {event.status === 'open' && event.team_count < event.required_teams && (
+              <h2 className="calendar-month-label">{monthLabel}</h2>
+              <button type="button" className="calendar-nav-btn" onClick={() => goToMonth(1)} aria-label="Next month">
+                &rarr;
+              </button>
+            </div>
+
+            <div className="calendar-grid">
+              {WEEKDAYS.map((wd) => (
+                <div key={wd} className="calendar-weekday">{wd}</div>
+              ))}
+              {calendarCells.map((cell) => (
                 <button
                   type="button"
-                  className="btn btn-gold btn-join"
-                  onClick={() => handleJoin(event.id)}
-                  disabled={rosterBelowMinimum}
-                  title={rosterBelowMinimum ? `Needs at least ${squad?.min_roster_size} athletes on the roster` : undefined}
+                  key={cell.key}
+                  className={[
+                    'calendar-day',
+                    !cell.inMonth ? 'calendar-day-outside' : '',
+                    cell.isToday ? 'calendar-day-today' : '',
+                    cell.events.length > 0 ? 'calendar-day-has-events' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => openDayPopup(cell)}
+                  disabled={cell.events.length === 0}
                 >
-                  Join
+                  <span className="calendar-day-number">{cell.date.getDate()}</span>
+                  {cell.events.length > 0 && (
+                    <span className="calendar-day-chips">
+                      {cell.events.slice(0, 2).map((ev) => (
+                        <span key={ev.id} className={`calendar-chip calendar-chip-${ev.status}`}>
+                          <span className="calendar-chip-time">{eventTime(ev)}</span>
+                          <span className="calendar-chip-title">{eventLabel(ev)}</span>
+                        </span>
+                      ))}
+                      {cell.events.length > 2 && (
+                        <span className="calendar-day-more">+{cell.events.length - 2} more</span>
+                      )}
+                    </span>
+                  )}
                 </button>
-              )}
+              ))}
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="calendar-wrap">
-          <div className="calendar-header">
-            <button type="button" className="calendar-nav-btn" onClick={() => goToMonth(-1)} aria-label="Previous month">
-              &larr;
-            </button>
-            <h2 className="calendar-month-label">{monthLabel}</h2>
-            <button type="button" className="calendar-nav-btn" onClick={() => goToMonth(1)} aria-label="Next month">
-              &rarr;
-            </button>
           </div>
-
-          <div className="calendar-grid">
-            {WEEKDAYS.map((wd) => (
-              <div key={wd} className="calendar-weekday">{wd}</div>
-            ))}
-            {calendarCells.map((cell) => (
-              <button
-                type="button"
-                key={cell.key}
-                className={[
-                  'calendar-day',
-                  !cell.inMonth ? 'calendar-day-outside' : '',
-                  cell.isToday ? 'calendar-day-today' : '',
-                  cell.events.length > 0 ? 'calendar-day-has-events' : '',
-                ].filter(Boolean).join(' ')}
-                onClick={() => openDayPopup(cell)}
-                disabled={cell.events.length === 0}
-              >
-                <span className="calendar-day-number">{cell.date.getDate()}</span>
-                {cell.events.length > 0 && (
-                  <span className="calendar-day-chips">
-                    {cell.events.slice(0, 2).map((ev) => (
-                      <span key={ev.id} className={`calendar-chip calendar-chip-${ev.status}`}>
-                        <span className="calendar-chip-time">{eventTime(ev)}</span>
-                        <span className="calendar-chip-title">{eventLabel(ev)}</span>
-                      </span>
-                    ))}
-                    {cell.events.length > 2 && (
-                      <span className="calendar-day-more">+{cell.events.length - 2} more</span>
-                    )}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Day popup */}
       {dayPopup && (
@@ -523,6 +775,8 @@ function Events() {
           </div>
         </div>
       )}
+
+      </div>
     </Layout>
   )
 }

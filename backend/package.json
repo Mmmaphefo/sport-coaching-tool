@@ -4,13 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run tests/integration",
-    "test:coverage": "vitest run tests/integration --coverage",
+    "test": "NODE_ENV=test vitest run tests/integration",
+    "test:coverage": "NODE_ENV=test vitest run tests/integration --coverage",
     "test:watch": "vitest tests/integration",
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
     "lint": "eslint .",
-    "migrate": "node-pg-migrate"
+    "migrate": "node-pg-migrate",
+    "migrate:test": "node-pg-migrate --database-url-var TEST_DATABASE_URL"
   },
   "keywords": [],
   "author": "",
@@ -21,9 +22,12 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "node-pg-migrate": "^9.0.0",
+    "nodemailer": "^10.0.10",
     "pg": "^8.22.0",
     "resend": "^6.22.0",
-    "svix": "^1.99.1"
+    "svix": "^1.99.1",
+    "swagger-ui-express": "^5.0.1",
+    "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

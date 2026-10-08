@@ -14,9 +14,25 @@ if (!clerkPubKey) {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <ClerkProvider publishableKey={clerkPubKey}>
+      <ClerkProvider
+        publishableKey={clerkPubKey}
+        localization={{
+          signIn: {
+            start: {
+              title: 'Sign in to KickStat',
+              subtitle: 'Welcome back! Please sign in to continue',
+            },
+          },
+          signUp: {
+            start: {
+              title: 'Create your KickStat account',
+            },
+          },
+        }}
+      >
         <App />
       </ClerkProvider>
     </BrowserRouter>
   </StrictMode>,
 )
+// Trigger redeploy for Clerk production keys

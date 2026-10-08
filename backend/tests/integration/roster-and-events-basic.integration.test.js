@@ -130,6 +130,52 @@ describe('US4 — edit or remove an athlete', () => {
     const stillThere = await pool.query('SELECT id FROM athletes WHERE id = $1', [athleteId])
     expect(stillThere.rows).toHaveLength(0)
   })
+
+  test('AC: the owning coach can attach a profile photo and it is returned by the roster list', async () => {
+    const photo = 'data:image/jpeg;base64,ZmFrZQ=='
+
+    const res = await request(app)
+      .patch(`/api/athletes/${athleteId}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ photo })
+
+    expect(res.status).toBe(200)
+    expect(res.body.photo).toBe(photo)
+
+    const listRes = await request(app)
+      .get('/api/athletes')
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+
+    expect(listRes.status).toBe(200)
+    expect(listRes.body[0].photo).toBe(photo)
+  })
+
+  test('rejects a photo that is not a base64 image data URL', async () => {
+    const res = await request(app)
+      .patch(`/api/athletes/${athleteId}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ photo: 'https://example.com/face.jpg' })
+
+    expect(res.status).toBe(400)
+
+    const stored = await pool.query('SELECT photo FROM athletes WHERE id = $1', [athleteId])
+    expect(stored.rows[0].photo).toBeNull()
+  })
+
+  test('an explicit null clears the stored photo', async () => {
+    await pool.query(
+      "UPDATE athletes SET photo = 'data:image/jpeg;base64,ZmFrZQ==' WHERE id = $1",
+      [athleteId]
+    )
+
+    const res = await request(app)
+      .patch(`/api/athletes/${athleteId}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ photo: null })
+
+    expect(res.status).toBe(200)
+    expect(res.body.photo).toBeNull()
+  })
 })
 
 describe('US5 — create a match or training event', () => {
@@ -140,10 +186,15 @@ describe('US5 — create a match or training event', () => {
       .send({
         title: 'Tuesday Training',
         type: 'training',
-        event_date: '2026-08-25',
+        format: 'training',
+        event_date: '2026-12-01',
         event_time: '17:00',
         location: 'Wits Main Oval',
       })
+
+    if (res.status !== 201) {
+      console.log('Error response:', res.body)
+    }
 
     expect(res.status).toBe(201)
     expect(res.body.title).toBe('Tuesday Training')
@@ -179,7 +230,7 @@ describe('US6 — edit or cancel an event', () => {
   beforeEach(async () => {
     const inserted = await pool.query(
       `INSERT INTO events (squad_id, title, event_type, event_date, created_by)
-       VALUES ($1, 'Saturday Match', 'match', '2026-08-22T10:00:00Z',
+       VALUES ($1, 'Saturday Match', 'match', '2027-08-22T10:00:00Z',
          (SELECT id FROM users WHERE clerk_id = 'test_clerk_user'))
        RETURNING id`,
       [squadId]
@@ -193,7 +244,7 @@ describe('US6 — edit or cancel an event', () => {
     const res = await request(app)
       .patch(`/api/events/${eventId}`)
       .set('x-test-clerk-user-id', 'test_clerk_user')
-      .send({ event_date: '2026-08-22', event_time: '14:00' })
+      .send({ event_date: '2027-08-22', event_time: '14:00' })
 
     expect(res.status).toBe(200)
 

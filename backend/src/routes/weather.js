@@ -47,7 +47,7 @@ function describeCode(code) {
 // ---------------------------------------------------------------------------
 const geocodeCache = new Map();
 const weatherCache = new Map();
-const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+const WEATHER_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - reduce API calls to avoid rate limits
 
 function getCached(map, key, ttl) {
   const entry = map.get(key);
@@ -63,12 +63,6 @@ function setCached(map, key, data) {
   map.set(key, { ts: Date.now(), data });
 }
 
-function serviceUnavailable(message) {
-  const err = new Error(message);
-  err.status = 503;
-  return err;
-}
-
 async function geocodeLocation(location) {
   const key = location.trim().toLowerCase();
   const cached = getCached(geocodeCache, key, Infinity); // place coordinates don't go stale
@@ -78,22 +72,26 @@ async function geocodeLocation(location) {
     location
   )}&count=1`;
 
-  // Everything that talks to the geocoding service — the network call,
-  // the status check, and the JSON parse — is covered here. A malformed
-  // or non-JSON response (e.g. a proxy/firewall intercepting the request
-  // and returning an HTML page) is just as much a "service unavailable"
-  // situation as a dropped connection, so it should map to 503 too.
-  let data;
+  let res;
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Geocoding service responded with status ${res.status}`);
-    }
-    data = await res.json();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
   } catch (err) {
-    throw serviceUnavailable('Geocoding service unavailable');
+    console.error('Geocoding fetch failed:', err.message);
+    const serviceErr = new Error('Weather service unavailable');
+    serviceErr.status = 503;
+    throw serviceErr;
+  }
+  if (!res.ok) {
+    console.error('Geocoding returned:', res.status);
+    const err = new Error('Weather service unavailable');
+    err.status = 503;
+    throw err;
   }
 
+  const data = await res.json();
   const match = data.results && data.results[0];
   if (!match) {
     return null;
@@ -122,19 +120,47 @@ async function fetchWeather(latitude, longitude) {
     `&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max` +
     `&forecast_days=3&timezone=auto`;
 
-  // Same reasoning as geocodeLocation: network failure, a non-2xx status,
-  // and a bad/non-JSON body are all treated as the weather service being
-  // unavailable, not as an unhandled server error.
-  let data;
+  let res;
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Weather service responded with status ${res.status}`);
-    }
-    data = await res.json();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
   } catch (err) {
-    throw serviceUnavailable('Weather service unavailable');
+    console.error('Weather fetch failed:', err.message);
+    const serviceErr = new Error('Weather service unavailable');
+    serviceErr.status = 503;
+    throw serviceErr;
   }
+  if (!res.ok) {
+    console.error('Weather API returned:', res.status);
+    
+    // If rate-limited (429), return mock weather as fallback
+    if (res.status === 429) {
+      console.warn('Rate limited - returning mock weather data');
+      return {
+        current: {
+          temperatureC: 22,
+          windSpeedKph: 10,
+          weatherCode: 2,
+          description: 'Partly cloudy',
+          icon: '⛅',
+          observedAt: new Date().toISOString(),
+        },
+        daily: [
+          { date: new Date().toISOString().split('T')[0], maxC: 24, minC: 16, precipitationChance: 20, weatherCode: 2, description: 'Partly cloudy', icon: '⛅' },
+          { date: new Date(Date.now() + 86400000).toISOString().split('T')[0], maxC: 23, minC: 15, precipitationChance: 30, weatherCode: 3, description: 'Overcast', icon: '☁️' },
+          { date: new Date(Date.now() + 172800000).toISOString().split('T')[0], maxC: 25, minC: 17, precipitationChance: 10, weatherCode: 1, description: 'Mainly clear', icon: '🌤️' },
+        ],
+      };
+    }
+    
+    const err = new Error('Weather service unavailable');
+    err.status = 503;
+    throw err;
+  }
+
+  const data = await res.json();
 
   const current = data.current_weather
     ? {
@@ -161,22 +187,39 @@ async function fetchWeather(latitude, longitude) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/weather?location=<venue name>
+// GET /api/weather?location=<venue name>&lat=<num>&lng=<num>
 //
 // Not tied to a specific event id on purpose — this lets the event
 // creation form show a live preview as the coach types a venue, before
 // the event (and its id) exists, as well as the event detail page once
 // it's saved.
+//
+// When the coach has pinned the pitch on the venue map, the saved lat/lng
+// are passed through instead of geocoding the name: the forecast (and the
+// marker on the map) then belongs to the exact spot they picked, whatever
+// the venue is called.
 // ---------------------------------------------------------------------------
+function parseCoord(value, min, max) {
+  if (value === undefined || value === '') return null;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < min || num > max) return null;
+  return num;
+}
+
 router.get('/', requireAuth(), async (req, res) => {
   const location = (req.query.location || '').trim();
+  const lat = parseCoord(req.query.lat, -90, 90);
+  const lng = parseCoord(req.query.lng, -180, 180);
+  const pinned = lat !== null && lng !== null;
 
-  if (!location) {
+  if (!location && !pinned) {
     return res.status(400).json({ error: 'location query parameter is required' });
   }
 
   try {
-    const place = await geocodeLocation(location);
+    const place = pinned
+      ? { name: null, admin1: null, country: null, latitude: lat, longitude: lng }
+      : await geocodeLocation(location);
     if (!place) {
       return res.status(404).json({ error: `Could not find a location matching "${location}"` });
     }
@@ -184,8 +227,10 @@ router.get('/', requireAuth(), async (req, res) => {
     const weather = await fetchWeather(place.latitude, place.longitude);
 
     res.json({
-      query: location,
-      resolvedLocation: [place.name, place.admin1, place.country].filter(Boolean).join(', '),
+      query: location || null,
+      resolvedLocation: pinned
+        ? (location || 'Pinned location')
+        : [place.name, place.admin1, place.country].filter(Boolean).join(', '),
       latitude: place.latitude,
       longitude: place.longitude,
       current: weather.current,

@@ -1,0 +1,318 @@
+/* The combined selector (two classes) always wins over Welcome.css's single
+   ".welcome-hero" rule for any property listed here, regardless of which
+   stylesheet loads first — so this safely overrides layout/sizing while
+   still inheriting whatever background-image/position Welcome.css defines,
+   since those properties aren't touched here. */
+.pl-page.welcome-hero {
+  display: block;
+  height: auto;
+  min-height: 100svh;
+  padding: 0;
+}
+
+.pl-wash {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.55) 100%);
+  pointer-events: none;
+}
+
+.pl-content {
+  position: relative;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 24px 60px;
+}
+
+.pl-error {
+  color: #b33b3b;
+  padding: 8px 0;
+}
+
+/* Hero card */
+
+.pl-hero-card {
+  background: linear-gradient(135deg, var(--color-ink-fixed) 0%, #10202e 100%);
+  border-radius: var(--radius);
+  padding: 32px 36px;
+  color: #fff;
+}
+
+.pl-hero-id {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.pl-hero-logo {
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+}
+
+.pl-hero-eyebrow {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 13px;
+  color: var(--color-gold-deep);
+  margin: 0 0 6px;
+}
+
+.pl-hero-title {
+  font-family: var(--font-display);
+  font-size: 40px;
+  margin: 0 0 10px;
+  line-height: 1.1;
+  color: #fff;
+}
+
+.pl-hero-subtitle {
+  margin: 0 0 18px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 640px;
+}
+
+.pl-hero-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.pl-hero-cta {
+  background: var(--color-gold);
+  /* Fixed navy: the theme-swapping ink goes near-white in dark mode, which
+     is illegible on the lime CTA. */
+  color: var(--color-ink-fixed);
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 22px;
+  font-size: 14px;
+}
+
+.pl-hero-cta-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 22px;
+  font-size: 14px;
+}
+
+/* Live banner */
+
+.pl-live-banner {
+  margin-top: 24px;
+  background: linear-gradient(135deg, var(--color-ink-fixed) 0%, #10202e 100%);
+  border-radius: var(--radius);
+  padding: 24px 32px;
+  color: #fff;
+}
+
+.pl-live-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.pl-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e04040;
+  animation: pl-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pl-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.pl-live-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pl-live-match {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-display);
+  font-size: 20px;
+}
+
+.pl-live-team {
+  font-weight: 700;
+}
+
+.pl-live-score {
+  color: var(--color-gold);
+  font-size: 26px;
+}
+
+/* Generic section shell */
+
+.pl-section {
+  padding: 32px 0 0;
+}
+
+.pl-section-title {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 16px;
+  margin: 0 0 20px;
+  color: var(--color-ink);
+}
+
+.pl-empty {
+  color: var(--color-ink-soft);
+}
+
+/* Feature cards */
+
+.pl-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.pl-feature-card {
+  background: var(--color-chalk);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+.pl-feature-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-pitch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-gold-deep);
+  margin-bottom: 14px;
+}
+
+.pl-feature-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.pl-feature-card h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  margin: 0 0 8px;
+  color: var(--color-ink);
+}
+
+.pl-feature-card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-ink-soft);
+  line-height: 1.5;
+}
+
+/* Teams section */
+
+.pl-teams-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.pl-teams-head .pl-section-title {
+  margin-bottom: 0;
+}
+
+.pl-search {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  min-width: 240px;
+  background: var(--color-pitch);
+  color: var(--color-ink);
+}
+
+.pl-search:focus {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 1px;
+}
+
+.pl-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.pl-team-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--color-chalk);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.pl-team-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-gold);
+}
+
+.pl-team-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--color-ink-fixed);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.pl-team-card h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+  color: var(--color-ink);
+}
+
+.pl-team-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+/* Dark theme: the white photo wash becomes a navy wash so the landing hero
+   blends with the dark app shell, and the error red is lifted for navy. */
+[data-theme="dark"] .pl-wash {
+  background: linear-gradient(180deg, rgba(11, 27, 51, 0.45) 0%, rgba(11, 27, 51, 0.72) 100%);
+}
+
+[data-theme="dark"] .pl-error {
+  color: #e5737a;
+}

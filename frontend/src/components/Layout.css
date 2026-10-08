@@ -6,11 +6,15 @@
 .app-sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: var(--color-ink);
-  color: var(--color-pitch);
+  background: var(--color-ink-fixed);
+  color: var(--color-pitch-fixed);
   display: flex;
   flex-direction: column;
   padding: 24px 18px;
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow-y: auto;
 }
 
 .app-crest {
@@ -21,25 +25,17 @@
 }
 
 .app-crest-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid var(--color-gold);
-  color: var(--color-gold);
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 30px;
+  height: auto;
 }
 
 .app-crest-name {
   font-family: var(--font-display);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 14px;
-  color: var(--color-pitch);
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-pitch-fixed);
 }
 
 .app-nav {
@@ -53,6 +49,7 @@
   font-family: var(--font-display);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  font-weight: 600;
   font-size: 15px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
@@ -61,19 +58,22 @@
 }
 
 .nav-link:hover {
-  color: var(--color-pitch);
+  color: var(--color-pitch-fixed);
   text-decoration: none;
 }
 
 .nav-link-active {
-  color: var(--color-pitch);
-  border-left-color: var(--color-gold);
+  color: var(--color-pitch-fixed);
+  border-left-color: var(--color-lime);
   background: rgba(255, 255, 255, 0.06);
 }
 
 .app-sidebar-footer {
   margin-top: auto;
   padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .app-main {
@@ -92,6 +92,8 @@
     flex-direction: row;
     align-items: center;
     padding: 14px 16px;
+    height: auto;
+    z-index: 10;
   }
 
   .app-crest {

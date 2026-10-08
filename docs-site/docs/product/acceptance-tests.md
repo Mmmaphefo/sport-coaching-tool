@@ -102,6 +102,95 @@ Each user story below has one or more acceptance tests in Given–When–Then fo
 
 **Automated:** Covered in `backend/tests/integration/weather.integration.test.js`.
 
+## E5 · Statistics, Availability & Advanced Coaching (Sprint 3)
+
+### US27 — Athlete & Squad Comparison
+
+- Given two athletes in my squad, when I open the comparison page and pick both, then their season stats, BMI, and form appear side by side.
+- Given an athlete from another squad, when I force the compare API call, then the request is rejected.
+
+**Verified manually** during Sprint 3 feature-testing sessions (comparison endpoint and page). Automated coverage planned for Sprint 4.
+
+### US28 — Public Squad Page
+
+- Given a squad marked public, when a visitor opens its public link without logging in, then the roster and results are visible.
+- Given a coach on the settings page, when they enable the public page, then a shareable link (and CSV export) is available.
+
+**Automated:** `backend/tests/integration/missing-features.integration.test.js` (public pages), `frontend/src/pages/PublicSquad.test.jsx`, `frontend/src/pages/PublicLanding.test.jsx`.
+
+### US29 — Event Notifications
+
+- Given a scheduled event starting within 24 hours, when the hourly reminder sweep runs, then the coach receives a reminder email.
+- Given a coach invites an assistant, when the invite is created, then an email with the invite link is sent via Gmail.
+
+**Automated:** `backend/tests/integration/reminders.integration.test.js` (reminder sweep). Gmail invite delivery is verified manually (requires `GMAIL_USER` / `GMAIL_APP_PASSWORD` env config).
+
+### US41 — RSVP Availability
+
+- Given an athlete with an account, when they open an event, then they can set their own availability (available/unavailable/maybe).
+- Given a coach below the minimum available RSVP count, when they try to start the match, then the start is blocked with an explanation.
+
+**Automated:** `backend/tests/integration/match-availability.integration.test.js` (RSVP flow, availability gate, auto-start behaviour).
+
+### US42 — Stat Override
+
+- Given a stat shown on an athlete's profile, when the coach corrects it with a note, then the corrected value displays alongside the computed value.
+- Given an assistant, when they attempt to set an override, then the API rejects the request with 403.
+
+**Automated:** `backend/tests/integration/athletes.integration.test.js` (override CRUD, permission boundary), `frontend/src/pages/AthleteStats.test.jsx` (corrected display).
+
+### US43 — Clash Detection
+
+- Given a new event overlaps an existing one, when the coach submits the form, then a conflict warning names the clashing event.
+- Given an existing event is edited into a clash, when the update is saved, then the clash is flagged on the detail page.
+
+**Automated:** `backend/tests/integration/match-availability.integration.test.js` (clash checks).
+
+### US44 — Venue Map Editor
+
+- Given an event edit form, when the coach drops a pin on the map, then the coordinates save with the event and the weather widget centres on them.
+
+**Automated:** `frontend/src/components/VenueMapEditor.test.jsx` (pin placement, drag, geolocate, clear).
+
+### US45 — Offline Logging
+
+- Given the device loses signal mid-match, when actions are logged, then they queue locally and replay on reconnect.
+- Given a replayed entry whose original request actually landed, when it is resent, then no duplicate row is created.
+
+**Automated:** `backend/tests/integration/missing-features.integration.test.js` (idempotent `client_id` replay), `frontend/src/lib/offlineQueue.js` unit coverage via the missing-features and LiveMatch suites.
+
+### US46 — Tactics Board
+
+- Given a coach draws frames on the tactics board, when they save, then the tactic persists with its frames and reloads correctly.
+
+**Verified manually** in Sprint 3 (persistence fix validated across save/reload/delete). Automated coverage planned for Sprint 4.
+
+### US47 — Sessions / Drill Library
+
+- Given a tactical goal, when the coach auto-generates a session, then suitable drills are assembled into a training plan.
+
+**Verified manually** in Sprint 3. Automated coverage planned for Sprint 4.
+
+### US48 — Match Simulation
+
+- Given both teams have saved lineups, when the coach runs Quick Sim, then a full 90-minute script replays through the normal log endpoints and the result reads like a real match.
+- Given a player unknown to the ratings dataset, when the simulation resolves ratings, then a position-based estimate is used.
+
+**Automated:** `backend/tests/integration/simulation.integration.test.js`, `frontend/src/lib/simulation.test.js`, `frontend/src/pages/LiveMatch.test.jsx` (Quick Sim, timed run, lineup gate).
+
+### US49 — Squad Gender
+
+- Given a female squad, when the coach browses open leagues, then only same-gender (or unfiltered) events are joinable.
+- Given a coach creating a squad, when they pick male or female, then the setting drives event matchmaking filters.
+
+**Automated:** `backend/tests/integration/squad.integration.test.js` (gender on squads), `backend/tests/integration/events.integration.test.js` (gender filter on join/create).
+
+### US50 — Public Landing Page
+
+- Given a visitor with no account, when they open the landing page, then public squads and their live events are listed.
+
+**Automated:** `frontend/src/pages/PublicLanding.test.jsx`, `backend/tests/integration/missing-features.integration.test.js`.
+
 ## E4 · Infrastructure & Documentation
 
 ### US-I1 — CI/CD Pipeline

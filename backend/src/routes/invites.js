@@ -1,33 +1,63 @@
 const express = require('express')
 const crypto = require('crypto')
-const { Pool } = require('pg')
+const pool = require('../db')
 const { clerkClient } = require('@clerk/express')
 const { requireAuth, getAuth } = require('../middleware/auth')
 const { sendInviteEmail } = require('../lib/email')
 
 const router = express.Router()
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 // Shared by the assistant-invite form (Dashboard.jsx / Setup.jsx) and the
 // athlete-invite path (athletes.js, when an email is given on the add-athlete
-// form) — same token mechanism, distinguished by `role` and, for athletes,
-// `athlete_id`. Also sends the actual invite email now, rather than just
-// handing back a link to copy/paste.
-async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant', athleteId = null }) {
-  // Don't silently create a second invite for someone who's already been
-  // invited (or has already joined) this squad.
+// form or the per-card invite button) — same token mechanism, distinguished
+// by `role` and, for athletes, `athlete_id`. Also sends the actual invite
+// email now, rather than just handing back a link to copy/paste.
+//
+// `credentials` ({ email, password }) is set when the backend pre-created a
+// Clerk account for the player: it goes into the email and back to the coach
+// so they can share the login details.
+async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant', athleteId = null, credentials = null }) {
+  // If someone's already joined this squad, don't allow another invite for
+  // them. But if there's just a pending invite sitting there, resend it
+  // instead of blocking — coaches need to be able to re-trigger delivery
+  // (e.g. if the first email got lost, bounced, or was never sent).
   const existing = await pool.query(
-    "SELECT id, status FROM invites WHERE email = $1 AND squad_id = $2 AND status IN ('pending','accepted') LIMIT 1",
+    "SELECT id, status, token FROM invites WHERE email = $1 AND squad_id = $2 AND status IN ('pending','accepted') LIMIT 1",
     [email, squadId]
   )
+
+  const squadResult = await pool.query('SELECT name FROM squads WHERE id = $1', [squadId])
+  const squadName = squadResult.rows[0]?.name || 'the squad'
+
   if (existing.rows.length > 0) {
-    const err = new Error(
-      existing.rows[0].status === 'accepted'
-        ? 'This person has already joined the squad'
-        : 'An invite has already been sent to this email'
+    if (existing.rows[0].status === 'accepted') {
+      const err = new Error('This person has already joined the squad')
+      err.status = 409
+      throw err
+    }
+
+    // Pending invite already exists — resend the same link instead of
+    // creating a duplicate row or blocking the coach outright. The generated
+    // password from a new account creation cannot be recovered, so only the
+    // link is re-shared here.
+    const inviteLink = `${process.env.FRONTEND_URL || ''}/invite/${existing.rows[0].token}`
+    const emailSent = await sendInviteEmail({ to: email, role, inviteLink, squadName })
+
+    return {
+      inviteId: existing.rows[0].id,
+      inviteLink,
+      emailSent,
+      resent: true,
+    }
+  }
+
+  // A re-invite with a different email supersedes any older pending invite
+  // for the same athlete, so the roster card always reflects the latest one.
+  if (athleteId) {
+    await pool.query(
+      "UPDATE invites SET status = 'cancelled' WHERE athlete_id = $1 AND squad_id = $2 AND status = 'pending'",
+      [athleteId, squadId]
     )
-    err.status = 409
-    throw err
   }
 
   const token = crypto.randomBytes(24).toString('hex')
@@ -38,17 +68,26 @@ async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant
     [email, squadId, invitedBy, token, role, athleteId]
   )
 
-  const squadResult = await pool.query('SELECT name FROM squads WHERE id = $1', [squadId])
-  const squadName = squadResult.rows[0]?.name || 'the squad'
-  const inviteLink = process.env.FRONTEND_URL + '/invite/' + result.rows[0].token
+  if (!process.env.FRONTEND_URL) {
+    // Fail loudly here instead of silently baking "undefined" into the
+    // link inside the invite email — this is a deploy config problem
+    // (FRONTEND_URL missing on the hosting platform), not a per-request
+    // one, so every invite would otherwise ship a broken link.
+    console.error(
+      'FRONTEND_URL is not set — invite link would be broken. Set it in the backend environment.'
+    )
+  }
+  const inviteLink = `${process.env.FRONTEND_URL || ''}/invite/${result.rows[0].token}`
 
-  await sendInviteEmail({ to: email, role, inviteLink, squadName })
+  const emailSent = await sendInviteEmail({ to: email, role, inviteLink, squadName, credentials })
 
   return {
     inviteId: result.rows[0].id,
     // Still returned so the coach has a manual fallback/confirmation — the
     // frontend no longer treats this as the primary way to deliver it.
     inviteLink,
+    emailSent,
+    credentials: credentials || null,
   }
 }
 
@@ -140,13 +179,17 @@ router.post('/:token/accept', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Invite email does not match signed-in user' })
     }
 
+    // Store the account's email alongside the role — it's what future
+    // logins use to know which type of user this is (see lib/userLinking.js).
     const userResult = await client.query(
-      `INSERT INTO users (clerk_id, role, squad_id)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (clerk_id, role, squad_id, email)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (clerk_id) DO UPDATE
-         SET role = EXCLUDED.role, squad_id = EXCLUDED.squad_id
+         SET role = EXCLUDED.role,
+             squad_id = EXCLUDED.squad_id,
+             email = COALESCE(users.email, EXCLUDED.email)
        RETURNING id`,
-      [clerkId, invite.role, invite.squad_id]
+      [clerkId, invite.role, invite.squad_id, email || invite.email]
     )
     const userId = userResult.rows[0].id
 

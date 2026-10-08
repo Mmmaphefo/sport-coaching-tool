@@ -1,0 +1,370 @@
+/* ---------------------------------------------------------------------------
+   Tactics Board — 2D SVG pitch with draggable elements
+--------------------------------------------------------------------------- */
+.tactics-page {
+  margin: -40px -48px;
+  padding: 40px 48px;
+  background: var(--color-canvas);
+  min-height: 100vh;
+}
+
+@media (max-width: 720px) {
+  .tactics-page {
+    margin: -24px -20px;
+    padding: 24px 20px;
+  }
+}
+
+.tactics-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.tactics-eyebrow {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+
+.tactics-title {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.tactics-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.tactics-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .tactics-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tactics-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.tactics-sidebar h3 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-soft);
+  margin: 0 0 10px;
+}
+
+.tactics-tools {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.tactics-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink);
+  margin-bottom: 6px;
+  transition: all 0.15s;
+}
+
+.tactics-tool:hover {
+  background: #e8ecf1;
+}
+
+.tactics-tool.active {
+  border-color: var(--color-gold);
+  background: #fff9e6;
+}
+
+.tactics-hint {
+  font-size: 12px;
+  color: var(--color-gold);
+  margin: 8px 0 0;
+  padding: 8px;
+  background: #fff9e6;
+  border-radius: 6px;
+}
+
+.tactics-tool-icon {
+  font-size: 18px;
+  font-weight: bold;
+  width: 24px;
+  text-align: center;
+}
+
+.tactics-saved {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.tactics-empty {
+  font-size: 13px;
+  color: var(--color-ink-soft);
+  margin: 0;
+}
+
+.tactics-saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.tactics-saved-item.active {
+  background: #fff9e6;
+  border: 1px solid var(--color-gold);
+}
+
+.tactics-saved-item button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-ink);
+  text-align: left;
+  flex: 1;
+}
+
+.tactics-delete {
+  color: #dc3545 !important;
+  font-size: 18px !important;
+  font-weight: bold;
+  flex: 0 !important;
+  padding: 0 4px !important;
+}
+
+.tactics-help {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.tactics-help h3 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-soft);
+  margin: 0 0 10px;
+}
+
+.tactics-help ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.6;
+}
+
+.tactics-frames {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.tactics-frame-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tactics-frame-btn {
+  width: 32px;
+  height: 32px;
+  background: #f5f7fa;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.tactics-frame-btn.active {
+  border-color: var(--color-gold);
+  background: #fff9e6;
+}
+
+.tactics-board {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  position: relative;
+}
+
+.tactics-svg {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 600px;
+  display: block;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tactics-element-actions,
+.tactics-frame-actions {
+  position: absolute;
+  bottom: 32px;
+  right: 32px;
+  display: flex;
+  gap: 8px;
+}
+
+.tactics-frame-actions {
+  bottom: 72px;
+}
+
+/* Modal */
+.tactics-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.tactics-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.tactics-modal h2 {
+  margin: 0 0 20px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--color-ink);
+}
+
+.tactics-save-error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #dc2626;
+}
+
+.tactics-modal label {
+  display: block;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.tactics-modal input,
+.tactics-modal textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.tactics-modal textarea {
+  resize: vertical;
+}
+
+.tactics-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+/* Dark theme: the light-grey panels become navy surfaces with chalk wells
+   so the board blends with the rest of the app instead of glowing white. */
+[data-theme="dark"] .tactics-tools,
+[data-theme="dark"] .tactics-saved,
+[data-theme="dark"] .tactics-help,
+[data-theme="dark"] .tactics-frames,
+[data-theme="dark"] .tactics-board,
+[data-theme="dark"] .tactics-modal {
+  background: var(--color-pitch);
+  border: 1px solid var(--color-line);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .tactics-tool,
+[data-theme="dark"] .tactics-saved-item,
+[data-theme="dark"] .tactics-frame-btn {
+  background: var(--color-chalk);
+}
+
+[data-theme="dark"] .tactics-tool:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .tactics-tool.active,
+[data-theme="dark"] .tactics-saved-item.active,
+[data-theme="dark"] .tactics-frame-btn.active,
+[data-theme="dark"] .tactics-hint {
+  background: rgba(var(--color-lime-rgb), 0.14);
+}
+
+[data-theme="dark"] .tactics-hint {
+  color: var(--color-lime);
+}
+
+[data-theme="dark"] .tactics-save-error {
+  background: rgba(229, 115, 122, 0.12);
+  border-color: rgba(229, 115, 122, 0.4);
+  color: #e5737a;
+}
+
+[data-theme="dark"] .tactics-modal input,
+[data-theme="dark"] .tactics-modal textarea {
+  background: var(--color-chalk);
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}

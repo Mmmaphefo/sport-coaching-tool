@@ -43,6 +43,24 @@ updated with the confirmed list once verified against a working `.env.example`.
 tests.** The integration test suite truncates its tables between every test
 run — see [Running Tests](#running-tests) below.
 
+### Optional: match simulation player ratings
+
+The match simulator reads EA FC-style player ratings from a public Hugging Face
+dataset — **no API key required**. All four variables are optional; the defaults
+are compiled into `backend/src/lib/ratings.js`, and a missing or unreachable
+dataset only means players the dataset does not know about fall back to a
+position-based estimate (70–85 overall):
+
+```bash
+PLAYER_RATINGS_API_BASE=https://datasets-server.huggingface.co
+PLAYER_RATINGS_DATASET=jason1966/aayushmishra1512_fifa-2021-complete-player-data
+PLAYER_RATINGS_DATASET_CONFIG=default
+PLAYER_RATINGS_DATASET_SPLIT=train
+```
+
+See [EA FC Player Ratings Dataset](../third-party/player-ratings.md) for the
+lookup, caching and fallback rules.
+
 ## Set up the database
 
 Create your development database (name of your choice), then run migrations

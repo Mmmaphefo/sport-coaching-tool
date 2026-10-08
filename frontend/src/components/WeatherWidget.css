@@ -81,3 +81,28 @@
 .weather-widget-day-icon {
   font-size: 1.2rem;
 }
+
+.weather-widget-map {
+  margin-top: 0.75rem;
+}
+
+/* Mapbox static image — 640x360@2x source shown in the old iframe's slot. */
+.weather-widget-map-img {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.weather-widget-map-link {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--color-blue, #4a9eff);
+  text-decoration: none;
+}
+
+.weather-widget-map-link:hover {
+  text-decoration: underline;
+}
