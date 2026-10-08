@@ -1,5 +1,5 @@
 // AI assistance: drafted with Claude (Sonnet 5) via claude.ai; reviewed and tested by the project team.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import Events from './Events'
@@ -29,6 +29,11 @@ describe('Events', () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset()
     mocks.getToken.mockResolvedValue('test-token')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
   })
 
   it('shows a loading state then an empty events message', async () => {
@@ -231,5 +236,46 @@ describe('Events', () => {
     expect(posts[0].location_lat).toBe(-26.2041)
     expect(posts[0].location_lng).toBe(28.0473)
     expect(posts[0].location).toBeNull()
+  })
+
+  it('pins a chosen address on the map and previews its weather', async () => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.test.123')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        features: [{ place_name: 'Wits Main Oval, Johannesburg', center: [28.0305, -26.1926] }],
+      }),
+    }))
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/events/clashes')) return Promise.resolve([])
+      if (path === '/api/events') return Promise.resolve([])
+      if (path === '/api/squads/mine') {
+        return Promise.resolve({ id: 7, athlete_count: 15, min_roster_size: 11 })
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Events />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Schedule event/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Schedule event/i }))
+
+    // Type in the Location field — the single address entry of the form.
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Wits Main Oval' } })
+    fireEvent.click(await screen.findByRole('button', { name: /Wits Main Oval, Johannesburg/i }))
+
+    // The pin lands on the chosen address and the field holds its name…
+    await waitFor(() => expect(screen.getByText(/Pinned at -26.192600, 28.030500/i)).toBeInTheDocument())
+    expect(screen.getByRole('searchbox').value).toBe('Wits Main Oval, Johannesburg')
+    // …and the weather preview resolves the pinned coordinates exactly, so a
+    // street address doesn't depend on city-level name geocoding. Typing
+    // alone fires a name-only preview first; the pick must upgrade it to a
+    // pinned request — assert on that call, whichever order they land in.
+    await waitFor(() => {
+      const pinnedCall = mocks.apiRequest.mock.calls
+        .map((call) => String(call[0]))
+        .find((path) => path.startsWith('/api/weather?') && path.includes('lat=-26.1926') && path.includes('lng=28.0305'))
+      expect(pinnedCall).toBeDefined()
+    }, { timeout: 3000 })
   })
 })

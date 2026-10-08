@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   MAPBOX_MAX_ZOOM,
-  forwardGeocode,
   mapboxEnabled,
   mapboxTileUrl,
   reverseGeocode,
 } from '../lib/mapbox'
+import AddressSearchInput from './AddressSearchInput'
 import './VenueMapEditor.css'
 
 // Editable venue map — a small, dependency-free slippy map rendered on
@@ -22,6 +22,12 @@ import './VenueMapEditor.css'
 // when it is cleared. `onAddress(address)` offers the place name of an
 // address the coach explicitly picked from search, so the parent can fill
 // its location text field — it is never called for a name the coach typed.
+//
+// The view follows the pin: choose an address (the built-in search, or the
+// parent form's autocomplete when `searchable={false}`), use GPS, or drag
+// the pin — the map moves to keep the pin in view, the way ride-hailing
+// pickers do. Click-to-place and drag-to-pan leave the view alone, and the
+// mouse wheel zooms around the cursor.
 
 const TILE_SIZE = 256
 const MIN_ZOOM = 3
@@ -32,11 +38,14 @@ const DEFAULT_CENTER = { lat: -26.2041, lng: 28.0473 }
 // rather than a pan gesture.
 const CLICK_SLOP_PX = 4
 const PIN_GRAB_PX = 16
-// Keystroke debounce for address search, and post-drag settle time before
-// asking Mapbox what the pin is near (a drag fires onChange continuously —
-// only the resting position is worth a request).
-const SEARCH_DEBOUNCE_MS = 350
+// Post-drag settle time before asking Mapbox what the pin is near (a drag
+// fires onChange continuously — only the resting position is worth a
+// request).
 const REVERSE_DEBOUNCE_MS = 600
+// Mouse-wheel zoom: accumulated scroll delta that triggers one zoom step,
+// so a trackpad's many small events don't zoom too fast. Pinch-zoom events
+// (ctrlKey) step one level immediately.
+const WHEEL_ZOOM_STEP_DELTA = 100
 // Uber-grade GPS: high accuracy, no cached fix, generous indoor timeout.
 const GPS_OPTIONS = { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
 
@@ -73,7 +82,7 @@ function round6(value) {
   return Number(value.toFixed(6))
 }
 
-export default function VenueMapEditor({ latitude, longitude, label, onChange, onAddress }) {
+export default function VenueMapEditor({ latitude, longitude, label, onChange, onAddress, searchable = true }) {
   const pinLat = toCoord(latitude)
   const pinLng = toCoord(longitude)
   const hasPin = pinLat !== null && pinLng !== null
@@ -85,9 +94,6 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [hint, setHint] = useState('')
   const [search, setSearch] = useState('')
-  const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [searchError, setSearchError] = useState('')
   const [address, setAddress] = useState('')
   const [gpsAccuracy, setGpsAccuracy] = useState(null)
   const [copied, setCopied] = useState(false)
@@ -99,6 +105,14 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
   // pick can replace it, while never clobbering a hand-typed venue name.
   const lastAutoFillRef = useRef('')
   const lastReverseRef = useRef('')
+  // Which code moved the pin most recently — decides whether the view
+  // follows it. 'drag' and 'external' recentre the map; 'click' leaves the
+  // view alone; 'search' and 'gps' set the view themselves before
+  // reporting the new pin.
+  const pinSourceRef = useRef('external')
+  // Latest view geometry for the native wheel listener (attached once).
+  const viewRef = useRef(null)
+  const wheelAccRef = useRef(0)
 
   // The canvas is fluid — measure it so the tiles can cover it exactly.
   useEffect(() => {
@@ -118,41 +132,56 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
     }
   }, [])
 
-  // Address search — debounced, aborted when the query changes mid-flight,
-  // biased towards the current view via `proximity`.
+  // Mouse-wheel zoom around the cursor. Attached natively because React's
+  // synthetic wheel listener is passive — preventDefault would not stop the
+  // page scrolling underneath. The latest view geometry lives in viewRef,
+  // updated every render below.
   useEffect(() => {
-    if (!usingMapbox) return
-    const query = search.trim()
-    if (query.length < 3) {
-      setResults([])
-      setSearchError('')
-      setSearching(false)
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e) => {
+      e.preventDefault()
+      const view = viewRef.current
+      if (!view || !view.size.w || !view.size.h) return
+      if (e.ctrlKey) {
+        wheelAccRef.current = 0
+      } else {
+        wheelAccRef.current += e.deltaY
+        if (Math.abs(wheelAccRef.current) < WHEEL_ZOOM_STEP_DELTA) return
+      }
+      const direction = e.deltaY < 0 ? 1 : -1
+      wheelAccRef.current = 0
+      const nextZoom = Math.max(MIN_ZOOM, Math.min(view.maxZoom, view.zoom + direction))
+      if (nextZoom === view.zoom) return
+      const rect = el.getBoundingClientRect()
+      const px = e.clientX - rect.left
+      const py = e.clientY - rect.top
+      // Anchor the zoom on the world point under the cursor so it stays put.
+      const anchor = unproject(view.originX + px, view.originY + py, view.zoom)
+      const anchorPx = project(anchor.lat, anchor.lng, nextZoom)
+      const next = unproject(anchorPx.x - px + view.size.w / 2, anchorPx.y - py + view.size.h / 2, nextZoom)
+      setZoom(nextZoom)
+      setCenter({ lat: clampLat(next.lat), lng: next.lng })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // The view follows the pin. Dragging the pin ('drag') and parent-driven
+  // pin changes ('external' — e.g. an address chosen in the form's
+  // autocomplete) recentre the map so the chosen spot stays in view;
+  // 'click', 'search' and 'gps' already decided where the view should be.
+  useEffect(() => {
+    if (!hasPin) {
+      pinSourceRef.current = 'external'
       return
     }
-    const controller = new AbortController()
-    const timer = setTimeout(async () => {
-      setSearching(true)
-      setSearchError('')
-      try {
-        const found = await forwardGeocode(query, {
-          proximity: hasPin ? { lat: pinLat, lng: pinLng } : center,
-          signal: controller.signal,
-        })
-        if (controller.signal.aborted) return
-        setResults(found)
-      } catch (err) {
-        if (err.name === 'AbortError' || controller.signal.aborted) return
-        setResults([])
-        setSearchError('Address search is unavailable — try again in a moment.')
-      } finally {
-        if (!controller.signal.aborted) setSearching(false)
-      }
-    }, SEARCH_DEBOUNCE_MS)
-    return () => {
-      clearTimeout(timer)
-      controller.abort()
+    const source = pinSourceRef.current
+    pinSourceRef.current = 'external'
+    if (source === 'external' || source === 'drag') {
+      setCenter({ lat: pinLat, lng: pinLng })
     }
-  }, [search, usingMapbox, hasPin, pinLat, pinLng, center])
+  }, [hasPin, pinLat, pinLng])
 
   // Reverse geocode the resting pin so a bare coordinate can be checked
   // against a real place name. Skipped in the OSM fallback and for pins we
@@ -185,6 +214,10 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
   const centerPx = project(center.lat, center.lng, zoom)
   const originX = centerPx.x - size.w / 2
   const originY = centerPx.y - size.h / 2
+  // Fresh geometry for the wheel listener and the pointer handlers.
+  useEffect(() => {
+    viewRef.current = { zoom, originX, originY, size, maxZoom }
+  })
 
   const tiles = useMemo(() => {
     if (!size.w || !size.h) return []
@@ -217,7 +250,7 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
       })()
     : null
 
-  function placePinAt(clientX, clientY) {
+  function placePinAt(clientX, clientY, source) {
     const el = containerRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -225,6 +258,7 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
     // Manual placement invalidates the GPS accuracy reading — the pin is no
     // longer exactly where the device said it was.
     setGpsAccuracy(null)
+    pinSourceRef.current = source
     onChange({ lat: round6(point.lat), lng: round6(point.lng) })
   }
 
@@ -257,7 +291,7 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
     drag.moved = Math.max(drag.moved, Math.hypot(dx, dy))
 
     if (drag.mode === 'pin') {
-      if (drag.moved >= CLICK_SLOP_PX) placePinAt(e.clientX, e.clientY)
+      if (drag.moved >= CLICK_SLOP_PX) placePinAt(e.clientX, e.clientY, 'drag')
       return
     }
     if (drag.moved < CLICK_SLOP_PX) return
@@ -277,7 +311,7 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
       }
     }
     if (drag.mode === 'pan' && drag.moved < CLICK_SLOP_PX) {
-      placePinAt(e.clientX, e.clientY)
+      placePinAt(e.clientX, e.clientY, 'click')
     }
   }
 
@@ -297,6 +331,7 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
         setZoom((z) => Math.max(z, 17))
         setGpsAccuracy(Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null)
         setHint('')
+        pinSourceRef.current = 'gps'
         onChange(next)
       },
       () => setHint('Could not read your location — search the address or click the map instead.'),
@@ -309,14 +344,15 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
     setCenter(next)
     setZoom((z) => Math.max(z, 15))
     setSearch('')
-    setResults([])
-    setSearchError('')
     setGpsAccuracy(null)
     setAddress(result.name || '')
     lastReverseRef.current = `${next.lat.toFixed(6)},${next.lng.toFixed(6)}`
+    pinSourceRef.current = 'search'
     onChange(next)
     // Offer the picked place to the parent's location field, but never
-    // overwrite a venue name the coach typed themselves.
+    // overwrite a venue name the coach typed themselves. (The search box
+    // fills with the picked name first — clearing it here keeps the old
+    // "list collapses, box empties, address shows under the map" behaviour.)
     const current = (label || '').trim()
     if (onAddress && (!current || current === lastAutoFillRef.current)) {
       lastAutoFillRef.current = result.name
@@ -335,44 +371,17 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
     }
   }
 
-  function handleSearchKeyDown(e) {
-    if (e.key === 'Escape') {
-      setSearch('')
-      setResults([])
-      return
-    }
-    if (e.key === 'Enter' && results.length > 0) {
-      e.preventDefault()
-      applySearchResult(results[0])
-    }
-  }
-
   return (
     <div className="venue-map-editor">
-      {usingMapbox && (
-        <div className="venue-map-editor-search" role="search">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Find the venue — search an address or place"
-            aria-label="Search for a venue by address"
-          />
-          {searching && <span className="venue-map-editor-search-status">Searching…</span>}
-          {results.length > 0 && (
-            <ul className="venue-map-editor-results" aria-label="Address search results">
-              {results.map((result) => (
-                <li key={`${result.lat},${result.lng}`}>
-                  <button type="button" onClick={() => applySearchResult(result)}>
-                    {result.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {searchError && <p className="venue-map-editor-search-error">{searchError}</p>}
-        </div>
+      {usingMapbox && searchable && (
+        <AddressSearchInput
+          value={search}
+          onChange={setSearch}
+          onPick={applySearchResult}
+          proximity={hasPin ? { lat: pinLat, lng: pinLng } : center}
+          placeholder="Find the venue — search an address or place"
+          ariaLabel="Search for a venue by address"
+        />
       )}
 
       <div
@@ -462,10 +471,10 @@ export default function VenueMapEditor({ latitude, longitude, label, onChange, o
 
       <p className="venue-map-editor-hint">
         {hasPin
-          ? `Pinned at ${pinLat.toFixed(6)}, ${pinLng.toFixed(6)} — drag the pin or click the map to fine-tune.`
+          ? `Pinned at ${pinLat.toFixed(6)}, ${pinLng.toFixed(6)} — drag the pin (the map follows) or click to fine-tune.`
           : usingMapbox
-            ? 'Search an address above, use GPS, or click the map to pin the pitch.'
-            : 'Click the map to pin the pitch. Drag to pan, + / − to zoom.'}
+            ? 'Search an address above, use GPS, or click the map to pin the pitch. Drag the map to pan, scroll to zoom.'
+            : 'Click the map to pin the pitch. Drag to pan, scroll or + / − to zoom.'}
         {gpsAccuracy !== null ? ` GPS fix ±${Math.round(gpsAccuracy)} m.` : ''}
         {hint ? ` ${hint}` : ''}
       </p>
