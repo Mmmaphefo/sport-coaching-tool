@@ -18,6 +18,9 @@ router.get('/', requireAuth(), async (req, res) => {
     )
     res.json(result.rows)
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message })
+    }
     console.error('GET /api/tactics error:', err)
     res.status(500).json({ error: `Failed to load tactics: ${err.message}` })
   }
@@ -37,6 +40,9 @@ router.get('/:id', requireAuth(), async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Tactic not found' })
     res.json(result.rows[0])
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message })
+    }
     console.error('GET /api/tactics/:id error:', err)
     res.status(500).json({ error: 'Failed to load tactic' })
   }
