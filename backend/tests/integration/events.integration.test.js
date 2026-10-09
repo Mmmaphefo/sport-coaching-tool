@@ -466,3 +466,72 @@ describe('League / tournament events', () => {
     expect(statsRes.body.topAssisters[0]).toMatchObject({ athleteName: 'Creative Playmaker', assists: 1 })
   })
 })
+
+// The edit form sends an explicit null when a coach clears the location text
+// or the opponent/title name — the PATCH must honour that while leaving
+// fields the request never mentions untouched.
+describe('PATCH /api/events/:id — optional fields can be cleared', () => {
+  test('AC: an explicit null clears the location text but leaves absent fields and the pin alone', async () => {
+    const event = await createEvent()
+
+    const seeded = await request(app)
+      .patch(`/api/events/${event.id}`)
+      .send({ location: 'Wits Main Oval', location_lat: -26.1926, location_lng: 28.0305 })
+    expect(seeded.status).toBe(200)
+
+    const res = await request(app)
+      .patch(`/api/events/${event.id}`)
+      .send({ location: null })
+
+    expect(res.status).toBe(200)
+    expect(res.body.location).toBeNull()
+
+    const stored = await pool.query(
+      'SELECT location, opponent, location_lat, location_lng FROM events WHERE id = $1',
+      [event.id]
+    )
+    expect(stored.rows[0].location).toBeNull()
+    // Absent fields keep their stored values; the pin was never mentioned.
+    expect(stored.rows[0].opponent).toBe('Riverside FC')
+    expect(stored.rows[0].location_lat).toBeCloseTo(-26.1926)
+    expect(stored.rows[0].location_lng).toBeCloseTo(28.0305)
+  })
+
+  test('AC: explicit null coordinates clear the pin while the address text stays', async () => {
+    const event = await createEvent()
+
+    await request(app)
+      .patch(`/api/events/${event.id}`)
+      .send({ location: 'Wits Main Oval', location_lat: -26.1926, location_lng: 28.0305 })
+
+    const res = await request(app)
+      .patch(`/api/events/${event.id}`)
+      .send({ location_lat: null, location_lng: null })
+
+    expect(res.status).toBe(200)
+    const stored = await pool.query(
+      'SELECT location, location_lat, location_lng FROM events WHERE id = $1',
+      [event.id]
+    )
+    expect(stored.rows[0].location).toBe('Wits Main Oval')
+    expect(stored.rows[0].location_lat).toBeNull()
+    expect(stored.rows[0].location_lng).toBeNull()
+  })
+
+  test('AC: an explicit null opponent clears the name; an untouched title keeps its value', async () => {
+    const event = await createEvent()
+
+    await request(app)
+      .patch(`/api/events/${event.id}`)
+      .send({ title: 'Midweek practice' })
+
+    const res = await request(app)
+      .patch(`/api/events/${event.id}`)
+      .send({ opponent: null })
+
+    expect(res.status).toBe(200)
+    const stored = await pool.query('SELECT opponent, title FROM events WHERE id = $1', [event.id])
+    expect(stored.rows[0].opponent).toBeNull()
+    expect(stored.rows[0].title).toBe('Midweek practice')
+  })
+})

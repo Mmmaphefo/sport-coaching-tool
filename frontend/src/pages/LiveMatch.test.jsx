@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import LiveMatch from './LiveMatch'
+import { clearQueue, enqueue, getQueue } from '../lib/offlineQueue'
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
@@ -10,6 +11,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../lib/api', () => ({
   apiRequest: mocks.apiRequest,
+  // Same verdict as the real api.js: retry offline/5xx, reject 4xx. The
+  // offline tests exercise postLog's catch path, which depends on it.
+  isRetryableError: (err) => Boolean(err && err.isRetryable),
 }))
 
 vi.mock('@clerk/clerk-react', () => ({
@@ -325,4 +329,218 @@ describe('LiveMatch player access', () => {
     expect(await screen.findByText('Dashboard page')).toBeInTheDocument()
     expect(screen.queryByText('Timeline')).not.toBeInTheDocument()
   })
+})
+
+// Offline-first logging: the same logging UI keeps working with the server
+// unreachable, entries queue in localStorage, and the queue replays once the
+// connection returns. jsdom's navigator.onLine is a prototype getter, so the
+// tests shadow it with an own property and delete it again afterwards.
+describe('LiveMatch offline queue', () => {
+  const MATCH_KEY = '/api/events/5'
+
+  function networkError() {
+    return Object.assign(new Error('Could not reach the server. Is the backend running?'), {
+      status: 0,
+      isRetryable: true,
+    })
+  }
+
+  function liveDetail(timeline = []) {
+    return eventDetail({
+      event: { status: 'live', started_at: new Date(Date.now() - 10 * 60000).toISOString() },
+      lineups: lineupRows(11),
+      timeline,
+    })
+  }
+
+  function setOnline(value) {
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => value })
+  }
+
+  function seedQueuedCard(clientId) {
+    enqueue(MATCH_KEY, {
+      type: 'create',
+      clientId,
+      path: `${MATCH_KEY}/logs`,
+      method: 'POST',
+      body: {
+        athlete_id: 12,
+        action_type: 'yellow_card',
+        is_scoring: false,
+        minute: 5,
+        client_id: clientId,
+      },
+    })
+  }
+
+  beforeEach(() => {
+    mocks.apiRequest.mockReset()
+    mocks.getToken.mockResolvedValue('test-token')
+    clearQueue(MATCH_KEY)
+  })
+
+  afterEach(() => {
+    delete window.navigator.onLine
+    vi.unstubAllGlobals()
+    clearQueue(MATCH_KEY)
+  })
+
+  it('queues an entry when the POST cannot reach the server and shows it as pending', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/events/5') return Promise.resolve(liveDetail())
+      if (path === '/api/events/5/logs') return Promise.reject(networkError())
+      if (path === '/api/athletes') return Promise.resolve(athletes)
+      return Promise.resolve({})
+    })
+
+    renderLive('/live/5')
+
+    // Carding a bench player is the shortest full logging flow.
+    fireEvent.click(await screen.findByText('Yellow Card'))
+    fireEvent.click(screen.getByText(/Squad Player 12/))
+
+    // The coach is told the entry is safe on the device, the timeline shows
+    // the optimistic row flagged as queued, and the banner offers a sync.
+    await waitFor(() => expect(screen.getByText(/Saved on this device/i)).toBeInTheDocument())
+    expect(screen.getByText('queued')).toBeInTheDocument()
+    expect(screen.getByText('yellow card')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/1 entry queued, waiting to sync/i)
+    expect(screen.getByRole('button', { name: 'Sync now' })).toBeInTheDocument()
+
+    // The queue holds one create whose replay key matches the body it sends.
+    const stored = getQueue(MATCH_KEY)
+    expect(stored).toHaveLength(1)
+    expect(stored[0].type).toBe('create')
+    expect(stored[0].body.client_id).toBe(stored[0].clientId)
+  }, 10000)
+
+  it('restores a queued entry from a previous session while offline', async () => {
+    setOnline(false)
+    seedQueuedCard('client-card-1')
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/events/5') return Promise.resolve(liveDetail())
+      if (path === '/api/athletes') return Promise.resolve(athletes)
+      return Promise.resolve({})
+    })
+
+    renderLive('/live/5')
+
+    // The row queued before the tab closed is back on the timeline...
+    expect(await screen.findByText('queued')).toBeInTheDocument()
+    expect(screen.getByText('yellow card')).toBeInTheDocument()
+    expect(screen.getByText('Squad Player 12')).toBeInTheDocument()
+    // ...the banner says logging still works offline...
+    expect(screen.getByRole('status')).toHaveTextContent(/You're offline/i)
+    expect(screen.getByRole('status')).toHaveTextContent(/\(1 queued\)/)
+    // ...and nothing was sent: the queue only replays once online.
+    expect(mocks.apiRequest.mock.calls.some(([path]) => path === '/api/events/5/logs')).toBe(false)
+  }, 10000)
+
+  it('replays the queue when the connection returns and retires the synced row', async () => {
+    setOnline(false)
+    seedQueuedCard('client-card-1')
+    let syncedRow = null
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/events/5/logs') {
+        syncedRow = {
+          id: 101,
+          athlete_id: 12,
+          action_type: 'yellow_card',
+          is_scoring: false,
+          minute: 5,
+          logged_at: new Date().toISOString(),
+        }
+        return Promise.resolve(syncedRow)
+      }
+      if (path === '/api/events/5') return Promise.resolve(liveDetail(syncedRow ? [syncedRow] : []))
+      if (path === '/api/athletes') return Promise.resolve(athletes)
+      return Promise.resolve({})
+    })
+
+    renderLive('/live/5')
+    expect(await screen.findByText('queued')).toBeInTheDocument()
+
+    setOnline(true)
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+
+    // The replay carried the client id (idempotent), the row loses its
+    // pending badge once the server copy lands, and the queue empties.
+    await waitFor(() => expect(screen.queryByText('queued')).not.toBeInTheDocument())
+    const post = mocks.apiRequest.mock.calls.find(([path]) => path === '/api/events/5/logs')
+    expect(post[1].method).toBe('POST')
+    expect(post[1].body.client_id).toBe('client-card-1')
+    expect(getQueue(MATCH_KEY)).toHaveLength(0)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByText('yellow card')).toBeInTheDocument()
+  }, 10000)
+
+  it('undoing a queued entry removes it locally without ever sending it', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    setOnline(false)
+    seedQueuedCard('client-card-1')
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/events/5') return Promise.resolve(liveDetail())
+      if (path === '/api/athletes') return Promise.resolve(athletes)
+      return Promise.resolve({})
+    })
+
+    renderLive('/live/5')
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+
+    await waitFor(() => expect(screen.getByText(/Entry removed/i)).toBeInTheDocument())
+    expect(screen.queryByText('queued')).not.toBeInTheDocument()
+    expect(getQueue(MATCH_KEY)).toHaveLength(0)
+    expect(mocks.apiRequest.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+  }, 10000)
+
+  it('drops an entry the server permanently rejects and keeps syncing the rest', async () => {
+    seedQueuedCard('client-bad')
+    enqueue(MATCH_KEY, {
+      type: 'create',
+      clientId: 'client-good',
+      path: `${MATCH_KEY}/logs`,
+      method: 'POST',
+      body: {
+        athlete_id: 11,
+        action_type: 'goal',
+        is_scoring: true,
+        minute: 6,
+        client_id: 'client-good',
+      },
+    })
+    const rejected = Object.assign(new Error('Log entry not found'), {
+      status: 404,
+      isRetryable: false,
+    })
+    let syncedRow = null
+    mocks.apiRequest.mockImplementation((path, options) => {
+      if (path === '/api/events/5/logs') {
+        if (options?.body?.client_id === 'client-bad') return Promise.reject(rejected)
+        syncedRow = {
+          id: 102,
+          athlete_id: 11,
+          action_type: 'goal',
+          is_scoring: true,
+          minute: 6,
+          logged_at: new Date().toISOString(),
+        }
+        return Promise.resolve(syncedRow)
+      }
+      if (path === '/api/events/5') return Promise.resolve(liveDetail(syncedRow ? [syncedRow] : []))
+      if (path === '/api/athletes') return Promise.resolve(athletes)
+      return Promise.resolve({})
+    })
+
+    renderLive('/live/5')
+
+    // Online on mount: the queue flushes immediately. The rejected entry is
+    // reported rather than silently swallowed, the good entry still syncs.
+    await waitFor(() => expect(screen.getByText(/rejected by the server and skipped/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('queued')).not.toBeInTheDocument())
+    expect(getQueue(MATCH_KEY)).toHaveLength(0)
+    expect(screen.getByText('goal')).toBeInTheDocument()
+    expect(screen.getByText('Squad Player 11')).toBeInTheDocument()
+  }, 10000)
 })

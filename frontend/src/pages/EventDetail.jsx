@@ -358,7 +358,7 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
             {penalties.map((p) => (
               <li key={p.id} className="event-penalty-item">
                 <span className="event-penalty-minute">{p.minute}'</span>
-                <span className="event-penalty-type">{p.action_type}</span>
+                <span className="event-penalty-type">{formatActionType(p.action_type)}</span>
                 <span className="event-penalty-player">{p.athlete_name || 'Opponent'}</span>
               </li>
             ))}
