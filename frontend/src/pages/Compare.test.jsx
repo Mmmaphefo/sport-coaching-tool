@@ -154,4 +154,18 @@ describe('Compare', () => {
 
     expect(await screen.findByText('Could not load the roster')).toBeInTheDocument()
   })
+
+  it('switches to the team comparison tab', async () => {
+    mocks.apiRequest.mockImplementation(async (url) => {
+      if (url === '/api/athletes') return athletes
+      return { period: { summary: { played: 0 }, opponents: [], matches: [] }, comparePeriod: null }
+    })
+    render(<BrowserRouter><Compare /></BrowserRouter>)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Team vs opponents' }))
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Compare your team' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Team vs opponents' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByText(/No finished matches in this period/)).toBeInTheDocument()
+  })
 })

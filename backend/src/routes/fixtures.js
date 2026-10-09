@@ -8,7 +8,7 @@ const {
   validateLineupPayload,
   saveLineup,
   lineupCheckForLog,
-  applySubstitution,
+  applySubstitutionInTx,
 } = require('../lib/lineups');
 const { ensureRatings, squadFromRows, ratingsPayload } = require('../lib/ratings');
 const { simulateMatch } = require('../lib/match-simulation');
@@ -440,14 +440,6 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       }
     }
 
-    if (isSubstitutionSwap) {
-      const substitutionError = await applySubstitution(
-        pool, { fixtureId: fixture.id }, Number(athlete_id), Number(substitute_athlete_id)
-      );
-      if (substitutionError) {
-        return res.status(400).json({ error: substitutionError });
-      }
-    }
 
     // A goal may carry its assist in the same request; the assist becomes a
     // linked log entry so stats and the timeline stay consistent.
@@ -480,6 +472,7 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     const client = await pool.connect();
     let createdEntry;
+    let substitutionError = null;
     try {
       await client.query('BEGIN');
       const result = await client.query(
@@ -500,14 +493,25 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       );
       createdEntry = result.rows[0];
 
-      if (assistRow) {
+      // The lineup swap happens in the SAME transaction as its log entry
+      // (see applySubstitutionInTx), after the insert: a duplicate replay
+      // fails the insert on client_id first and never touches the lineup.
+      if (isSubstitutionSwap) {
+        substitutionError = await applySubstitutionInTx(
+          client, { fixtureId: fixture.id }, Number(athlete_id), Number(substitute_athlete_id)
+        );
+      }
+
+      if (substitutionError) {
+        await client.query('ROLLBACK');
+      } else if (assistRow) {
         await client.query(
           `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, related_log_id)
            VALUES ($1, $2, $3, 'assist', false, 1, $4, NULL, $5, $6)`,
           [fixture.event_id, fixture.id, Number(assist_athlete_id), minute ?? null, userId, createdEntry.id]
         );
       }
-      await client.query('COMMIT');
+      if (!substitutionError) await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
       // Two replays of the same queued log can race; the unique index makes
@@ -526,6 +530,9 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       client.release();
     }
 
+    if (substitutionError) {
+      return res.status(400).json({ error: substitutionError });
+    }
     res.status(201).json(createdEntry);
   } catch (err) {
     if (err.status) {

@@ -466,6 +466,76 @@ describe('substitutions', () => {
 
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Swap a starting player for a substitute')
+
+    // The rejected swap must not leave a log entry behind (T10).
+    const logs = await request(app)
+      .get(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+    expect(logs.body).toHaveLength(0)
+  })
+
+  // T10: an offline-queued substitution may be replayed. The replay must
+  // return the stored entry and never swap the lineup a second time.
+  test('replaying a queued substitution is idempotent', async () => {
+    const { fixtureId, homeAthletes } = await createLeague()
+    await setFixtureLineup(fixtureId)
+    const body = {
+      athlete_id: homeAthletes[0].id,
+      action_type: 'substitution',
+      substitute_athlete_id: homeAthletes[11].id,
+      minute: 60,
+      client_id: 'sub-replay-1',
+    }
+
+    const first = await request(app)
+      .post(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send(body)
+    const replay = await request(app)
+      .post(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send(body)
+
+    expect(first.status).toBe(201)
+    expect(replay.status).toBe(200)
+    expect(replay.body.id).toBe(first.body.id)
+
+    const logs = await request(app)
+      .get(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+    expect(logs.body.filter((l) => l.action_type === 'substitution')).toHaveLength(1)
+
+    const after = await request(app)
+      .get(`/api/fixtures/${fixtureId}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+    expect(after.body.lineups.find((l) => l.athlete_id === homeAthletes[0].id).is_starter).toBe(false)
+    expect(after.body.lineups.find((l) => l.athlete_id === homeAthletes[11].id).is_starter).toBe(true)
+  })
+
+  test('two copies of a queued substitution arriving at once both succeed with one entry', async () => {
+    const { fixtureId, homeAthletes } = await createLeague()
+    await setFixtureLineup(fixtureId)
+    const body = {
+      athlete_id: homeAthletes[0].id,
+      action_type: 'substitution',
+      substitute_athlete_id: homeAthletes[11].id,
+      client_id: 'sub-race-1',
+    }
+    const send = () => request(app)
+      .post(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send(body)
+
+    const [a, b] = await Promise.all([send(), send()])
+
+    // Before the fix the loser got a 400 ("Swap a starting player…").
+    expect([a.status, b.status].sort()).toEqual([200, 201])
+    expect(a.body.id).toBe(b.body.id)
+
+    const logs = await request(app)
+      .get(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+    expect(logs.body.filter((l) => l.action_type === 'substitution')).toHaveLength(1)
   })
 })
 

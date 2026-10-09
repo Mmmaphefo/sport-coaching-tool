@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
@@ -243,6 +243,11 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
             <button className="btn btn-ghost" onClick={openEventEdit}>
               Edit details
             </button>
+          )}
+          {event.event_type === 'match' && event.status === 'completed' && (
+            <Link to={`/reports/match/event/${id}`} className="btn btn-ghost">
+              Match report
+            </Link>
           )}
         </div>
       </div>
@@ -841,6 +846,11 @@ function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
                       >
                         Go live
                       </button>
+                    )}
+                    {fixture.status === 'completed' && (fixture.is_home_mine || fixture.is_away_mine) && (
+                      <Link to={`/reports/match/fixture/${fixture.id}`} className="btn btn-ghost">
+                        Match report
+                      </Link>
                     )}
                   </div>
                 </div>

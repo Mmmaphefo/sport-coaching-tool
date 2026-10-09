@@ -7,6 +7,8 @@ import Dashboard from './pages/Dashboard'
 import Roster from './pages/Roster'
 import AthleteStats from './pages/AthleteStats'
 import Compare from './pages/Compare'
+import SeasonReport from './pages/SeasonReport'
+import MatchReport from './pages/MatchReport'
 import TacticsBoard from './pages/TacticsBoard'
 import Sessions from './pages/Sessions'
 import Setup from './pages/Setup'
@@ -133,6 +135,22 @@ function App() {
           element={
             <OnboardingGuard>
               <AccountSettings />
+            </OnboardingGuard>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <OnboardingGuard>
+              <SeasonReport />
+            </OnboardingGuard>
+          }
+        />
+        <Route
+          path="/reports/match/:kind/:id"
+          element={
+            <OnboardingGuard>
+              <MatchReport />
             </OnboardingGuard>
           }
         />

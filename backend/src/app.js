@@ -16,6 +16,7 @@ const accountRouter = require('./routes/account');
 const weatherRouter = require('./routes/weather');
 const injuriesRouter = require('./routes/injuries');
 const compareRouter = require('./routes/compare');
+const reportsRouter = require('./routes/reports');
 const tacticsRouter = require('./routes/tactics');
 const sessionsRouter = require('./routes/sessions');
 const publicRouter = require('./routes/public');
@@ -91,6 +92,7 @@ app.use('/api/account', accountRouter);
 app.use('/api/weather', weatherRouter);
 app.use('/api/injuries', injuriesRouter);
 app.use('/api/compare', compareRouter);
+app.use('/api/reports', reportsRouter);
 app.use('/api/tactics', tacticsRouter);
 app.use('/api/sessions', sessionsRouter);
 

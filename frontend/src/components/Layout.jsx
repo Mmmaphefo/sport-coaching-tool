@@ -49,6 +49,7 @@ function Layout({ children }) {
           {!isAthlete && navItem('/roster', 'Roster')}
           {isAthlete && athleteId && navItem(`/roster/${athleteId}`, 'My Stats')}
           {navItem('/compare', 'Compare')}
+          {navItem('/reports', 'Reports')}
           {navItem('/tactics', 'Tactics')}
           {navItem('/sessions', 'Sessions')}
           {navItem('/events', 'Events')}

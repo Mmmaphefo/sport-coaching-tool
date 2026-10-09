@@ -45,6 +45,8 @@ A full-stack web application for sports coaches and assistants to manage squads,
 
 ### Coaching Tools (Sprint 3)
 - Athlete comparison page with BMI and form
+- Team vs opponents comparison over any period, optionally against a second period (e.g. this season against last), with a per-opponent record
+- Printable season and match reports (Print / Save as PDF) with CSV export of results, player totals and match timelines
 - Tactics board with saved frames and the sessions / drill library (filterable by tactical goals, age group, duration, and phase)
 - Ratings-weighted match simulation (Quick Sim / Simulate Match) for events and fixtures
 - Coach-only stat overrides with an audit trail, merged over derived stats
@@ -210,6 +212,9 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | PATCH / DELETE | `/api/athletes/:id/stats/override[/:statKey]` | Coach stat correction / revert |
 | PATCH / DELETE | `/api/athletes/:id` | Update or remove an athlete (coach only) |
 | GET | `/api/compare/athletes?a=&b=` | Side-by-side athlete comparison |
+| GET | `/api/compare/team?from=&to=[&vs_from=&vs_to=]` | Team vs opponents over a period, optionally against a second period |
+| GET | `/api/reports/season?from=&to=` | Season report: record, results, player totals, per-opponent record |
+| GET | `/api/reports/match/:kind/:id` | Match report for a regular match (`event`) or league fixture (`fixture`) |
 | GET | `/api/dashboard/summary` | Dashboard summary (readiness, form, leaders) |
 | GET / POST | `/api/events` | List or create events and leagues |
 | GET | `/api/events/clashes` | Pre-creation conflict check |

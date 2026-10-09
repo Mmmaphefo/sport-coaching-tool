@@ -256,6 +256,57 @@ paths:
         '404':
           description: An athlete is not in your squad
 
+  /api/compare/team:
+    get:
+      summary: Team vs opponents over a period, optionally against a second period
+      description: >
+        Record, points, goals, shots on target, saves, cards and penalties for
+        the squad and its opponents across completed matches and league
+        fixtures, plus a per-opponent breakdown. Derived from the live log.
+      tags: [Compare]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date }, description: Start date (inclusive) }
+        - { name: to, in: query, required: true, schema: { type: string, format: date }, description: End date (inclusive) }
+        - { name: vs_from, in: query, required: false, schema: { type: string, format: date }, description: Comparison period start (requires vs_to) }
+        - { name: vs_to, in: query, required: false, schema: { type: string, format: date }, description: Comparison period end (requires vs_from) }
+      responses:
+        '200':
+          description: "{ period: { summary, opponents, matches }, comparePeriod: same shape or null }"
+        '400':
+          description: Malformed or reversed dates
+
+  /api/reports/season:
+    get:
+      summary: Season report data (record, results, players, opponents)
+      tags: [Reports]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: "{ squadName, from, to, summary, matches, opponents, players }"
+        '400':
+          description: Malformed or reversed dates
+
+  /api/reports/match/{kind}/{id}:
+    get:
+      summary: Match report data for one regular match or league fixture
+      tags: [Reports]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [event, fixture] } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: "{ squadName, match, score, result, stats, scorers, cards, penalties, substitutions, timeline }"
+        '404':
+          description: Not a match your squad played
+
   /api/dashboard/summary:
     get:
       summary: Dashboard summary (readiness, form, leaders, live events)
