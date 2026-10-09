@@ -220,6 +220,82 @@ router.get('/squads/:id', async (req, res) => {
   }
 });
 
+// GET /api/public/leaderboard — cross-platform table for the landing page:
+// every public squad's completed-match record (simple matches AND league
+// fixtures combined), ranked like a league table. Deliberately the same
+// scoring rules as the directory results above (squad-vs-opponent sums for
+// simple events, athlete-squad attribution for fixtures), so the leaderboard
+// and the squad pages can never disagree about a result.
+router.get('/leaderboard', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `WITH event_scores AS (
+         SELECT e.squad_id AS squad_id,
+                COALESCE(SUM(l.value) FILTER (WHERE l.is_scoring AND l.athlete_id IS NOT NULL AND l.deleted_at IS NULL), 0)::int AS gf,
+                COALESCE(SUM(l.value) FILTER (WHERE l.is_scoring AND l.athlete_id IS NULL AND l.deleted_at IS NULL), 0)::int AS ga
+         FROM events e
+         LEFT JOIN log_entries l ON l.event_id = e.id
+         WHERE e.status = 'completed' AND e.format = 'match'
+         GROUP BY e.squad_id, e.id
+       ),
+       fixture_scores AS (
+         SELECT f.home_squad_id AS home_squad_id,
+                f.away_squad_id AS away_squad_id,
+                COALESCE(SUM(l.value) FILTER (WHERE l.is_scoring AND a.squad_id = f.home_squad_id AND l.deleted_at IS NULL), 0)::int AS home_gf,
+                COALESCE(SUM(l.value) FILTER (WHERE l.is_scoring AND a.squad_id = f.away_squad_id AND l.deleted_at IS NULL), 0)::int AS away_gf
+         FROM fixtures f
+         LEFT JOIN log_entries l ON l.fixture_id = f.id
+         LEFT JOIN athletes a ON a.id = l.athlete_id
+         WHERE f.status = 'completed'
+         GROUP BY f.id
+       ),
+       match_scores AS (
+         SELECT squad_id, gf, ga FROM event_scores
+         UNION ALL
+         SELECT home_squad_id, home_gf, away_gf FROM fixture_scores
+         UNION ALL
+         SELECT away_squad_id, away_gf, home_gf FROM fixture_scores
+       )
+       SELECT s.id AS squad_id, s.name AS squad_name,
+              COUNT(*)::int AS played,
+              COUNT(*) FILTER (WHERE m.gf > m.ga)::int AS won,
+              COUNT(*) FILTER (WHERE m.gf = m.ga)::int AS drawn,
+              COUNT(*) FILTER (WHERE m.gf < m.ga)::int AS lost,
+              SUM(m.gf)::int AS goals_for,
+              SUM(m.ga)::int AS goals_against,
+              COUNT(*) FILTER (WHERE m.ga = 0)::int AS clean_sheets,
+              SUM(CASE WHEN m.gf > m.ga THEN 3 WHEN m.gf = m.ga THEN 1 ELSE 0 END)::int AS points
+       FROM match_scores m
+       JOIN squads s ON s.id = m.squad_id AND s.is_public = true
+       GROUP BY s.id, s.name
+       ORDER BY points DESC,
+                (SUM(m.gf) - SUM(m.ga)) DESC,
+                SUM(m.gf) DESC,
+                s.name ASC
+       LIMIT 10`
+    );
+
+    res.json({
+      leaderboard: result.rows.map((r) => ({
+        squadId: r.squad_id,
+        squadName: r.squad_name,
+        played: r.played,
+        won: r.won,
+        drawn: r.drawn,
+        lost: r.lost,
+        goalsFor: r.goals_for,
+        goalsAgainst: r.goals_against,
+        goalDifference: r.goals_for - r.goals_against,
+        cleanSheets: r.clean_sheets,
+        points: r.points,
+      })),
+    });
+  } catch (err) {
+    console.error('Error building public leaderboard:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- private-link model -----------------------------------------------------
 
 async function loadLinkedSquad(token) {

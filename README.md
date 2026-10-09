@@ -238,6 +238,7 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | GET / PATCH / DELETE | `/api/tactics/:id` | Read, update, or delete a tactic |
 | GET / POST | `/api/sessions[/:id]` | Drill library CRUD |
 | GET | `/api/public/squads` · `/api/public/squads/:id` | Public directory and squad pages (no auth) |
+| GET | `/api/public/leaderboard` | Cross-platform table of every public squad — completed matches and league fixtures (no auth) |
 | GET | `/api/public/links/:token[/export.csv]` | Private share link and CSV export (no auth) |
 | GET | `/api/weather?location=` or `?lat=&lng=` | Venue weather forecast |
 | POST | `/webhooks/clerk` | Clerk webhook (user lifecycle) |
@@ -323,4 +324,3 @@ Full project documentation is available in the [docs site](https://kickstat-docs
 ## License
 
 This project was developed as part of COMS3011A at the University of the Witwatersrand.
-# test

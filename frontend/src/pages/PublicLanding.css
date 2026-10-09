@@ -175,6 +175,68 @@
   color: var(--color-ink);
 }
 
+/* Platform leaderboard */
+
+.pl-board-sub {
+  color: var(--color-ink-soft);
+  margin: -12px 0 16px;
+  font-size: 14px;
+}
+
+.pl-board-wrap {
+  background: var(--color-chalk);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.pl-board {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.pl-board th {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 12px;
+  text-align: center;
+  color: var(--color-ink-soft);
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.pl-board td {
+  text-align: center;
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.pl-board tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pl-board .pl-board-team {
+  text-align: left;
+}
+
+.pl-board td.pl-board-team a {
+  color: var(--color-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pl-board td.pl-board-team a:hover {
+  text-decoration: underline;
+}
+
+.pl-board .pl-board-pts {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
 .pl-empty {
   color: var(--color-ink-soft);
 }
