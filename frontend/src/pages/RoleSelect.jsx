@@ -105,7 +105,7 @@ function RoleSelect() {
       <div className="role-select-overlay" />
       <div className="role-select-vignette" />
 
-      <button className="role-select-back" onClick={() => navigate('/')}>
+      <button className="role-select-back" onClick={() => navigate(isSignedIn ? '/dashboard' : '/')}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5" />
           <path d="m12 19-7-7 7-7" />

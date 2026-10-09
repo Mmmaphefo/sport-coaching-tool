@@ -1,15 +1,9 @@
-import { SignedIn, SignedOut } from '@clerk/clerk-react'
-import { Navigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import './Welcome.css'
 
 function Welcome() {
   return (
-    <>
-      <SignedIn>
-        <Navigate to="/role-select" replace />
-      </SignedIn>
-      <SignedOut>
-        <div className="welcome-hero">
+    <div className="welcome-hero">
           <div className="welcome-overlay" />
           <div className="welcome-vignette" />
 
@@ -53,9 +47,7 @@ function Welcome() {
             <span className="welcome-step-divider" />
             <span className="welcome-step">TRACK</span>
           </footer>
-        </div>
-      </SignedOut>
-    </>
+    </div>
   )
 }
 
