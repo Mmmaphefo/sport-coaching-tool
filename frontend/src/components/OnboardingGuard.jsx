@@ -34,7 +34,12 @@ function GuardCheck({ children }) {
         const data = await apiRequest('/api/squads/mine', { getToken })
         setSquad(data)
       } catch (err) {
-        setError(err.message)
+        // 404 means no squad exists yet (new coach) — allow setup to proceed
+        if (err.status === 404) {
+          setSquad({ onboarded: false })
+        } else {
+          setError(err.message)
+        }
       } finally {
         setLoading(false)
         setInitialLoadDone(true)
