@@ -11,6 +11,7 @@ const {
   applySubstitutionInTx,
 } = require('../lib/lineups');
 const { ensureRatings, squadFromRows, ratingsPayload } = require('../lib/ratings');
+const { buildLineupSuggestions } = require('../lib/lineupSuggestions');
 const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
@@ -940,6 +941,34 @@ router.put('/:id/lineup', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error saving event lineup:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/events/:id/lineup/suggestions — a suggested starting XI and bench
+// for the coach's own side, built from RSVPs, current injuries, recent goal
+// involvement and the overall ratings the simulator maintains. Read-only:
+// nothing is saved until the wizard PUTs the lineup. Staff only.
+router.get('/:id/lineup/suggestions', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+
+    const event = await loadEventWithAccess(pool, req.params.id, squadId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (LEAGUE_FORMATS.has(event.format)) {
+      return res.status(400).json({ error: 'Use the fixture lineup suggestions for league events' });
+    }
+
+    const suggestions = await buildLineupSuggestions(pool, { eventId: event.id, squadId });
+    res.json(suggestions);
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Error building lineup suggestions:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

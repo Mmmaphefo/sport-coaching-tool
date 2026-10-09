@@ -176,6 +176,35 @@ function LiveMatch() {
   // players: the server keeps the lineups but refuses to kick off.
   const [startBlocked, setStartBlocked] = useState(null)
 
+  // --- Lineup suggestions: a data-backed head start for the wizard. ---
+  const [lineupSuggestions, setLineupSuggestions] = useState(null)
+
+  // Suggestions are supplementary: when the endpoint fails (or the squad has
+  // no history) the wizard falls back to its own by-squad-number auto-fill.
+  const suggestionsReady = Boolean(
+    detail &&
+    activeStatus !== 'completed' && activeStatus !== 'cancelled' &&
+    (detail.lineups || []).length === 0 &&
+    (isFixture ? detail.canLog !== false : true)
+  )
+  useEffect(() => {
+    if (!suggestionsReady) return
+    let cancelled = false
+    apiRequest(`${apiPrefix}/${entityId}/lineup/suggestions`, { getToken })
+      .then((data) => {
+        if (!cancelled) setLineupSuggestions(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [suggestionsReady, apiPrefix, entityId, getToken])
+
+  // Never carry one match's suggestions into another.
+  useEffect(() => {
+    setLineupSuggestions(null)
+  }, [entityId, apiPrefix])
+
   const [editingEntryId, setEditingEntryId] = useState(null)
   const [editForm, setEditForm] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
@@ -990,6 +1019,7 @@ function LiveMatch() {
             awayName={isFixture ? awayName : null}
             homeRoster={homeRoster}
             awayRoster={isFixture ? awayRoster : null}
+            suggestions={lineupSuggestions}
             saving={savingLineup}
             onSave={handleSaveLineup}
           />
