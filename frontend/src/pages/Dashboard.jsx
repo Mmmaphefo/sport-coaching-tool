@@ -72,6 +72,9 @@ function Dashboard() {
   // Snapshot "now" once for the player period cutoffs — same one-time
   // pattern the profile card uses.
   const [nowMs] = useState(() => Date.now())
+  // Season-form trends are independent of the period pills — they always
+  // cover the rolling 12-month window, so they load once.
+  const [trends, setTrends] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -126,6 +129,21 @@ function Dashboard() {
   useEffect(() => {
     load()
   }, [load])
+
+  const loadTrends = useCallback(async () => {
+    try {
+      const result = await apiRequest('/api/dashboard/trends', { getToken })
+      setTrends(result)
+    } catch {
+      // The form chart is supplementary — a failure leaves the rest of the
+      // dashboard untouched.
+      setTrends(null)
+    }
+  }, [getToken])
+
+  useEffect(() => {
+    loadTrends()
+  }, [loadTrends])
 
   // While a match is live, quietly re-poll the summary so the live-score
   // card tracks goals as they are logged in the match centre.
@@ -239,6 +257,12 @@ function Dashboard() {
   }
 
   const { squad, readinessTrend, positionAvailability, form, teamGoals, attackLeaders, nextEvent, liveEvent } = data
+
+  // Season-form chart inputs (staff view): the last 10 completed matches,
+  // oldest first, scaled to the busiest scoreline in that run.
+  const trendMatches = trends?.matches ?? []
+  const trendRecent = trendMatches.slice(-10)
+  const trendMax = Math.max(1, ...trendRecent.map((m) => Math.max(m.goalsFor, m.goalsAgainst)))
 
   // Player match chart geometry: one stacked bar per match, scaled to the
   // best single-match return in the period.
@@ -501,6 +525,70 @@ function Dashboard() {
       </div>
 
       <div className="dash-bottom-grid">
+        {!isAthlete && (
+          <div className="dash-panel" data-testid="dash-trends">
+            <span className="dash-chart-eyebrow">Season form</span>
+            <h3>Match results</h3>
+            {trendMatches.length === 0 ? (
+              <p className="roster-status">No completed matches yet — the form chart fills in as results come in.</p>
+            ) : (
+              <>
+                <div className="dash-trend-dots">
+                  {trendRecent.map((m) => (
+                    <button
+                      type="button"
+                      key={`dot-${m.kind}-${m.id}`}
+                      className={`dash-trend-dot dash-trend-${m.result.toLowerCase()}`}
+                      title={`${new Date(m.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} vs ${m.opponent} — ${m.goalsFor}-${m.goalsAgainst}`}
+                      onClick={() => navigate(`/reports/match/${m.kind}/${m.id}`)}
+                    >
+                      {m.result}
+                    </button>
+                  ))}
+                </div>
+                <div className="dash-trend-bars">
+                  {trendRecent.map((m) => (
+                    <button
+                      type="button"
+                      key={`bar-${m.kind}-${m.id}`}
+                      className="dash-trend-col"
+                      title={`vs ${m.opponent} — ${m.goalsFor} for, ${m.goalsAgainst} against`}
+                      onClick={() => navigate(`/reports/match/${m.kind}/${m.id}`)}
+                    >
+                      <span className="dash-trend-bar-track">
+                        <span
+                          className="dash-trend-bar dash-trend-bar-for"
+                          style={{ height: `${(m.goalsFor / trendMax) * 100}%` }}
+                        />
+                      </span>
+                      <span className="dash-trend-bar-track">
+                        <span
+                          className="dash-trend-bar dash-trend-bar-against"
+                          style={{ height: `${(m.goalsAgainst / trendMax) * 100}%` }}
+                        />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {trends?.summary && (
+                  <div className="dash-trend-record">
+                    <span><strong>{trends.summary.played}</strong> played</span>
+                    <span><strong>{trends.summary.wins}</strong> won</span>
+                    <span><strong>{trends.summary.draws}</strong> drawn</span>
+                    <span><strong>{trends.summary.losses}</strong> lost</span>
+                    <span><strong>{trends.summary.points}</strong> pts</span>
+                  </div>
+                )}
+                <div className="dash-chart-footer">
+                  <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-gold" /> Goals for</span>
+                  <span className="dash-legend-item"><span className="dash-legend-swatch dash-legend-swatch-blue" /> Goals against</span>
+                  <span className="dash-player-chart-hint">Tap a result to open the match report</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {!isAthlete && (
           <div className="dash-panel">
             <span className="dash-chart-eyebrow">By unit</span>
