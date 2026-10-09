@@ -102,9 +102,10 @@ This page contains the sprint backlogs for Kickstat. Story points follow the sca
 | Story ID | Story | Task | Assignee | SP |
 |---|---|---|---|---|
 | MAP-01 | Venue map upgrade | Replace the OSM venue map with Mapbox: dark navigation basemap, address search with geocoding, high-accuracy GPS pin with accuracy display, reverse geocoded address, coordinates on the create form too | Lindo | 5 |
+| PUB-01 | Public leaderboard | Landing-page table ranking every public squad across completed matches and league fixtures (P/W/D/L, goals, clean sheets, points) | Lindo | 3 |
 | FIX-01 | Bug fixes | Address demo feedback | All | 5 |
 | FIX-02 | Coverage push | Add missing tests to reach 75%+ | Kgotlelelo | 5 |
 | DEP-01 | Deploy frontend | Static site deployment | Kgethego | 2 |
 | DEP-02 | Deploy backend | Managed Node.js deployment | Mmaphefo | 3 |
 | DOC-01 | Final docs | Update all documentation | Tasmiya | 3 |
-|  |  | **Total** |  | **23** |
+|  |  | **Total** |  | **26** |

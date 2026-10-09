@@ -13,6 +13,20 @@ function mockFetchOnce(data) {
   )
 }
 
+// The page fetches the directory and the leaderboard separately; route each
+// URL to its own payload. An Error value makes that request reject.
+function mockFetchByUrl(handlers) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url) => {
+      const key = String(url).includes('/api/public/leaderboard') ? 'leaderboard' : 'squads'
+      const payload = handlers[key]
+      if (payload instanceof Error) return Promise.reject(payload)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(payload) })
+    })
+  )
+}
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -139,6 +153,65 @@ describe('PublicLanding', () => {
     })
 
     expect(screen.getByText('No teams match your search.')).toBeInTheDocument()
+  })
+
+  it('renders the platform table ranked from the leaderboard endpoint', async () => {
+    mockFetchByUrl({
+      squads: { squads: [], live: [] },
+      leaderboard: {
+        leaderboard: [
+          {
+            squadId: 1,
+            squadName: 'Rovers FC',
+            played: 2,
+            won: 2,
+            drawn: 0,
+            lost: 0,
+            goalsFor: 5,
+            goalsAgainst: 1,
+            goalDifference: 4,
+            cleanSheets: 1,
+            points: 6,
+          },
+          {
+            squadId: 2,
+            squadName: 'Athletic United',
+            played: 1,
+            won: 0,
+            drawn: 0,
+            lost: 1,
+            goalsFor: 0,
+            goalsAgainst: 2,
+            goalDifference: -2,
+            cleanSheets: 0,
+            points: 0,
+          },
+        ],
+      },
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('PLATFORM TABLE')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Rovers FC')).toBeInTheDocument()
+    expect(screen.getByText('Athletic United')).toBeInTheDocument()
+    // Goal difference is signed for positive values.
+    expect(screen.getByText('+4')).toBeInTheDocument()
+    expect(screen.getByText('-2')).toBeInTheDocument()
+  })
+
+  it('keeps the directory working when the leaderboard request fails', async () => {
+    mockFetchByUrl({
+      squads: { squads: [{ id: 1, name: 'Harwick Rovers', athlete_count: 23 }], live: [] },
+      leaderboard: new Error('network down'),
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Harwick Rovers')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('PLATFORM TABLE')).not.toBeInTheDocument()
   })
 
   it('shows an error message when the request fails', async () => {

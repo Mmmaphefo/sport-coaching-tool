@@ -80,12 +80,22 @@ function PublicLanding() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
+  const [board, setBoard] = useState(null)
 
   useEffect(() => {
     fetch(`${API_URL}/api/public/squads`)
       .then((res) => res.json())
       .then(setData)
       .catch(() => setError('Could not load public squads right now.'))
+  }, [])
+
+  // The table is a nice-to-have: if it fails, the directory and the live
+  // banner above still work, so this fetch swallows its own errors.
+  useEffect(() => {
+    fetch(`${API_URL}/api/public/leaderboard`)
+      .then((res) => res.json())
+      .then((payload) => setBoard(payload.leaderboard || null))
+      .catch(() => setBoard(null))
   }, [])
 
   const filteredSquads = useMemo(() => {
@@ -134,6 +144,53 @@ function PublicLanding() {
               {data.live.map((item) => (
                 <LiveCard item={item} key={`${item.kind}-${item.id}`} />
               ))}
+            </div>
+          </section>
+        )}
+
+        {board && board.length > 0 && (
+          <section className="pl-section" id="pl-board">
+            <h2 className="pl-section-title">PLATFORM TABLE</h2>
+            <p className="pl-board-sub">
+              Every public squad&rsquo;s completed-match record &mdash; friendly results and league fixtures together.
+            </p>
+            <div className="pl-board-wrap">
+              <table className="pl-board">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th className="pl-board-team">Team</th>
+                    <th>P</th>
+                    <th>W</th>
+                    <th>D</th>
+                    <th>L</th>
+                    <th>GF</th>
+                    <th>GA</th>
+                    <th>GD</th>
+                    <th>Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {board.map((row, index) => (
+                    <tr key={row.squadId}>
+                      <td>{index + 1}</td>
+                      <td className="pl-board-team">
+                        <Link to={`/public/${row.squadId}`}>{row.squadName}</Link>
+                      </td>
+                      <td>{row.played}</td>
+                      <td>{row.won}</td>
+                      <td>{row.drawn}</td>
+                      <td>{row.lost}</td>
+                      <td>{row.goalsFor}</td>
+                      <td>{row.goalsAgainst}</td>
+                      <td>
+                        {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
+                      </td>
+                      <td className="pl-board-pts">{row.points}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
         )}
