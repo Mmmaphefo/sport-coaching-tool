@@ -1,0 +1,21 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Maskable launcher icon: full-bleed background, artwork kept inside the
+       central 80% safe zone so any crop shape keeps the mark intact. -->
+  <rect width="512" height="512" fill="#0B1B33"/>
+  <!-- KickStat K mark (from favicon.svg) in white for contrast on navy. -->
+  <g transform="translate(112,128) scale(0.85)" fill="#FFFFFF">
+    <path d="M0,0 L40,0 L40,160 L0,160 Z"/>
+    <path d="M40,72 L112,6 L160,6 L82,90 Z"/>
+    <path d="M40,86 L114,160 L162,160 L82,88 Z"/>
+  </g>
+  <circle cx="236" cy="140" r="14.5" fill="#D0FF41"/>
+  <!-- Ball, adapted from logo-icon-large.svg. -->
+  <g transform="translate(356,256)">
+    <circle r="62" fill="#FFFFFF"/>
+    <circle r="62" fill="none" stroke="#C6D0DD" stroke-width="3.8"/>
+    <polygon points="0,-26 24.8,-8.1 15.5,21 -15.5,21 -24.8,-8.1" fill="#0B1B33"/>
+    <polygon points="0,-55.8 21,-38.4 0,-25.9 -21,-38.4" fill="#0B1B33" opacity="0.85"/>
+    <polygon points="43.4,-3.1 24.8,-8.1 15.5,21 34.1,31" fill="#0B1B33" opacity="0.85"/>
+    <ellipse cx="-17.4" cy="-21.7" rx="13.6" ry="8.6" fill="#FFFFFF" opacity="0.7"/>
+  </g>
+</svg>
