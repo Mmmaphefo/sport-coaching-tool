@@ -51,7 +51,7 @@ describe('Welcome', () => {
     expect(screen.getByText('TRACK')).toBeInTheDocument()
   })
 
-  it('hides the landing actions for signed-in users so they are redirected to the dashboard', () => {
+  it('shows the landing page for signed-in users too', () => {
     clerkState.signedIn = true
 
     render(
@@ -60,7 +60,7 @@ describe('Welcome', () => {
       </MemoryRouter>
     )
 
-    expect(screen.queryByRole('link', { name: /Get Started/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /Sign In/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/OWN EVERY/)
+    expect(screen.getByRole('link', { name: /Get Started/i })).toHaveAttribute('href', '/role-select')
   })
 })
