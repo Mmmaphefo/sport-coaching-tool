@@ -66,8 +66,7 @@ jobs:
       # localhost:5433) and per-job bridge networks (service reachable by
       # container name at postgres:5433), so the probe step below discovers
       # the working address and exports DATABASE_URL for later steps.
-      # Postgres still listens on 5433 because 5432 is taken on the runner
-      # host by Gitea's own database.
+      # Postgres listens on 5432 (default) on the self-hosted runner;
 
     services:
       postgres:
@@ -76,9 +75,9 @@ jobs:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
           POSTGRES_DB: sport_coaching_test
-          PGPORT: "5433"
+          PGPORT: "5432"
         options: >-
-          --health-cmd "pg_isready -p 5433"
+          --health-cmd "pg_isready -p 5432"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -108,11 +107,11 @@ jobs:
           const { Client } = require("pg");
           const fs = require("fs");
           const candidates = [
-            "postgres:5433",
-            "localhost:5433",
-            "127.0.0.1:5433",
-            "172.17.0.1:5433",
-            "host.docker.internal:5433",
+            "postgres:5432",
+            "localhost:5432",
+            "127.0.0.1:5432",
+            "172.17.0.1:5432",
+            "host.docker.internal:5432",
           ];
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           (async () => {
