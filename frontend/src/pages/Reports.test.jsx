@@ -65,6 +65,24 @@ describe('SeasonReport', () => {
     expect(mocks.apiRequest.mock.calls[0][0]).toMatch(/^\/api\/reports\/season\?from=\d{4}-01-01&to=/)
   })
 
+  it('scopes the report to a saved season picked from the dropdown', async () => {
+    mocks.apiRequest.mockImplementation(async (path) => {
+      if (path === '/api/seasons') {
+        return [{ id: 4, name: '2026 Season', starts_on: '2026-02-01', ends_on: '2026-11-30' }]
+      }
+      return season
+    })
+    render(<MemoryRouter><SeasonReport /></MemoryRouter>)
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'season' } })
+    await screen.findByRole('option', { name: '2026 Season' })
+    fireEvent.change(screen.getByLabelText('Season'), { target: { value: '4' } })
+
+    expect(await screen.findByRole('heading', { name: 'Wits FC' })).toBeInTheDocument()
+    const reportCalls = mocks.apiRequest.mock.calls.filter((c) => c[0].startsWith('/api/reports/season'))
+    expect(reportCalls[reportCalls.length - 1][0]).toBe('/api/reports/season?from=2026-02-01&to=2026-11-30')
+  })
+
   it('downloads results and players as one CSV with formulas neutralised', async () => {
     mocks.apiRequest.mockResolvedValue(season)
     render(<MemoryRouter><SeasonReport /></MemoryRouter>)

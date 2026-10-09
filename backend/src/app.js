@@ -19,6 +19,7 @@ const compareRouter = require('./routes/compare');
 const reportsRouter = require('./routes/reports');
 const tacticsRouter = require('./routes/tactics');
 const sessionsRouter = require('./routes/sessions');
+const seasonsRouter = require('./routes/seasons');
 const publicRouter = require('./routes/public');
 const healthRouter = require('./routes/health');
 const { sendEventReminders } = require('./lib/reminders');
@@ -95,6 +96,7 @@ app.use('/api/compare', compareRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/tactics', tacticsRouter);
 app.use('/api/sessions', sessionsRouter);
+app.use('/api/seasons', seasonsRouter);
 
 // No auth — Render's deploy health check and the keepalive workflow hit
 // this without a token; see routes/health.js.

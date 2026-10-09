@@ -47,6 +47,7 @@ A full-stack web application for sports coaches and assistants to manage squads,
 - Athlete comparison page with BMI and form
 - Team vs opponents comparison over any period, optionally against a second period (e.g. this season against last), with a per-opponent record
 - Printable season and match reports (Print / Save as PDF) with CSV export of results, player totals and match timelines
+- Seasons: named periods with their own record, per-match breakdown and printable report, plus a schedule generator that spreads opponents across the season and flags clashes without blocking
 - Tactics board with saved frames and the sessions / drill library (filterable by tactical goals, age group, duration, and phase)
 - Ratings-weighted match simulation (Quick Sim / Simulate Match) for events and fixtures
 - Coach-only stat overrides with an audit trail, merged over derived stats
@@ -215,6 +216,11 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | GET | `/api/compare/team?from=&to=[&vs_from=&vs_to=]` | Team vs opponents over a period, optionally against a second period |
 | GET | `/api/reports/season?from=&to=` | Season report: record, results, player totals, per-opponent record |
 | GET | `/api/reports/match/:kind/:id` | Match report for a regular match (`event`) or league fixture (`fixture`) |
+| GET | `/api/seasons` | Saved seasons with calendar counts |
+| POST | `/api/seasons` | Create a season (staff) |
+| GET | `/api/seasons/:id` | Season detail: record, per-match breakdown, schedule with clash flags |
+| PATCH / DELETE | `/api/seasons/:id` | Rename or resize a season / remove it (events stay on the calendar) |
+| POST | `/api/seasons/:id/schedule` | Generate the season's match schedule (`dry_run` preview) with advisory clash flags |
 | GET | `/api/dashboard/summary` | Dashboard summary (readiness, form, leaders) |
 | GET | `/api/dashboard/trends` | Squad form over time — completed matches, scores, results, season record |
 | GET / POST | `/api/events` | List or create events and leagues |
