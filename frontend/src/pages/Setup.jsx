@@ -6,21 +6,40 @@ import Layout from '../components/Layout'
 import { apiRequest } from '../lib/api'
 import './Setup.css'
 
+// The wizard step survives a refresh, but storage can throw (Safari private
+// mode, blocked storage) and a stale value must never point at a step that
+// doesn't exist.
+const STEP_KEY = 'kickstat_setup_step'
+const STEPS = ['name', 'assistant', 'roster']
+
+function readStoredStep() {
+  try {
+    const stored = window.sessionStorage.getItem(STEP_KEY)
+    return STEPS.includes(stored) ? stored : 'name'
+  } catch {
+    return 'name'
+  }
+}
+
+function writeStoredStep(step) {
+  try {
+    if (step) window.sessionStorage.setItem(STEP_KEY, step)
+    else window.sessionStorage.removeItem(STEP_KEY)
+  } catch {
+    // Non-fatal: the wizard just restarts at step 1 after a refresh.
+  }
+}
+
 function Setup() {
   const { getToken } = useAuth()
   const navigate = useNavigate()
 
-  const [step, setStep] = useState(() => {
-    if (typeof window === 'undefined') return 'name'
-    return window.sessionStorage.getItem('kickstat_setup_step') || 'name'
-  }) // name | assistant | roster
+  const [step, setStep] = useState(readStoredStep) // name | assistant | roster
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('kickstat_setup_step', step)
-    }
+    writeStoredStep(step)
   }, [step])
 
   const [squadName, setSquadName] = useState('')
@@ -148,6 +167,7 @@ function Setup() {
         setError('Setup could not be completed. Please try again.')
         return
       }
+      writeStoredStep(null)
       navigate('/dashboard')
     } catch (err) {
       setError(err.message)

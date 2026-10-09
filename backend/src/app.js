@@ -24,26 +24,55 @@ const { sendEventReminders } = require('./lib/reminders');
 const app = express();
 
 app.use('/webhooks', webhooksRouter);
-app.use(cors({
-  // FRONTEND_URL carries the deployed frontend origin (set on the hosting
-  // platform); the extra ports cover local Vite dev servers, which bump the
-  // port when 5173 is already in use.
-  origin: [
-    process.env.FRONTEND_URL,
+// FRONTEND_URL carries the deployed frontend origin (set on the hosting
+// platform). It is normalised because a trailing slash or stray whitespace in
+// the dashboard value ("https://kickstat.pages.dev/") silently fails every
+// browser request with a CORS error. Several origins may be given
+// comma-separated, and Cloudflare Pages preview deploys
+// (<hash>.<project>.pages.dev) of a configured pages.dev origin are allowed.
+// The localhost ports cover Vite dev servers, which bump the port when 5173
+// is already in use.
+const normaliseOrigin = (o) => o.trim().replace(/\/+$/, '').toLowerCase();
+const allowedOrigins = new Set(
+  [
+    ...(process.env.FRONTEND_URL || '').split(','),
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',
-  ].filter(Boolean),
+  ]
+    .map(normaliseOrigin)
+    .filter(Boolean)
+);
+const pagesProjects = [...allowedOrigins]
+  .map((o) => o.match(/^https:\/\/([a-z0-9-]+)\.pages\.dev$/))
+  .filter(Boolean)
+  .map((m) => m[1]);
+
+function isAllowedOrigin(origin) {
+  // Non-browser clients (curl, health checks, server-to-server) send none.
+  if (!origin) return true;
+  const o = normaliseOrigin(origin);
+  if (allowedOrigins.has(o)) return true;
+  return pagesProjects.some((p) =>
+    new RegExp(`^https://[a-z0-9-]+\\.${p}\\.pages\\.dev$`).test(o)
+  );
+}
+
+app.use(cors({
+  origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
   credentials: true,
 }));
 // Raised from the 100kb default so profile-photo data URLs (already
 // downscaled in the browser) fit without hitting a 413.
 app.use(express.json({ limit: '1mb' }));
-app.use('/api/dashboard', dashboardRouter);
 // No auth middleware — the token in the URL is the access control (see
-// public.js). Mounted before clerkMiddleware like /api/dashboard above.
+// public.js). Mounted before clerkMiddleware so a Clerk outage or key
+// problem can never take the public squad pages down with it.
 app.use('/api/public', publicRouter);
+// Registered before every authenticated router so getAuth()/requireAuth()
+// work everywhere (including /api/dashboard).
 app.use(clerkMiddleware());
+app.use('/api/dashboard', dashboardRouter);
 
 // Moved here from before `const app = express()` — that's what was crashing
 // the server. Everything else in this block is unchanged from what you sent.

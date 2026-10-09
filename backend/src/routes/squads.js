@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId, getOwnedSquadIdForStaff, getOwnedSquadIdForCoach } = require('./_squad');
+const { getOwnedSquadId, getOwnedSquadIdForCoach } = require('./_squad');
 
 const router = express.Router();
 

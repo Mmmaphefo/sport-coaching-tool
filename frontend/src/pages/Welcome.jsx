@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { SignedIn, SignedOut } from '@clerk/clerk-react'
 import './Welcome.css'
 
 function Welcome() {
@@ -36,7 +37,14 @@ function Welcome() {
               <Link to="/role-select" className="welcome-cta">
                 GET STARTED <span className="welcome-cta-arrow">&rarr;</span>
               </Link>
-              <Link to="/sign-in" className="welcome-cta-secondary">SIGN IN</Link>
+              {/* A signed-in user must not be offered "Sign in" — it looked as
+                  though signing in had failed. */}
+              <SignedOut>
+                <Link to="/sign-in" className="welcome-cta-secondary">SIGN IN</Link>
+              </SignedOut>
+              <SignedIn>
+                <Link to="/dashboard" className="welcome-cta-secondary">OPEN DASHBOARD</Link>
+              </SignedIn>
             </div>
           </main>
 

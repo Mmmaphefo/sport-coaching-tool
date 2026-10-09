@@ -1,38 +1,24 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { ClerkProvider } from '@clerk/clerk-react'
 import './index.css'
 import App from './App.jsx'
+import ClerkWithRouter from './components/ClerkWithRouter'
+import { wakeBackend } from './lib/api'
 
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-
-if (!clerkPubKey) {
+if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env')
 }
+
+// Start waking the (free-tier, sleep-on-idle) API immediately.
+wakeBackend()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <ClerkProvider
-        publishableKey={clerkPubKey}
-        localization={{
-          signIn: {
-            start: {
-              title: 'Sign in to KickStat',
-              subtitle: 'Welcome back! Please sign in to continue',
-            },
-          },
-          signUp: {
-            start: {
-              title: 'Create your KickStat account',
-            },
-          },
-        }}
-      >
+      <ClerkWithRouter>
         <App />
-      </ClerkProvider>
+      </ClerkWithRouter>
     </BrowserRouter>
   </StrictMode>,
 )
-// Trigger redeploy for Clerk production keys

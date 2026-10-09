@@ -63,4 +63,17 @@ describe('Welcome', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/OWN EVERY/)
     expect(screen.getByRole('link', { name: /Get Started/i })).toHaveAttribute('href', '/role-select')
   })
+
+  it('offers the dashboard instead of "Sign in" to a signed-in user', () => {
+    clerkState.signedIn = true
+
+    render(
+      <MemoryRouter>
+        <Welcome />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole('link', { name: /Open Dashboard/i })).toHaveAttribute('href', '/dashboard')
+    expect(screen.queryByRole('link', { name: /^Sign In$/i })).not.toBeInTheDocument()
+  })
 })

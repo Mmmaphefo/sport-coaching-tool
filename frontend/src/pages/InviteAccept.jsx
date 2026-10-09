@@ -6,6 +6,7 @@ import { apiRequest } from '../lib/api'
 
 function InviteAccept() {
   const { token } = useParams()
+  const invitePath = `/invite/${token}`
   const { getToken, isSignedIn, isLoaded } = useAuth()
 
   const [status, setStatus] = useState('idle') // idle | accepting | done | error
@@ -47,11 +48,13 @@ function InviteAccept() {
       </div>
 
       <SignedOut>
-        <SignUpButton mode="modal">
+        {/* Bring the user back here after auth so the invite is accepted;
+            otherwise Clerk's default destination skips this page entirely. */}
+        <SignUpButton mode="modal" forceRedirectUrl={invitePath} signInForceRedirectUrl={invitePath}>
           <button className="btn btn-gold">Create account</button>
         </SignUpButton>
         <span style={{ margin: '0 1rem' }} />
-        <SignInButton mode="modal">
+        <SignInButton mode="modal" forceRedirectUrl={invitePath} signUpForceRedirectUrl={invitePath}>
           <button className="btn btn-ghost">Sign in</button>
         </SignInButton>
       </SignedOut>

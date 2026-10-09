@@ -22,8 +22,12 @@ vi.mock('@clerk/clerk-react', () => ({
   }),
   SignedIn: ({ children }) => (mocks.signedIn ? children : null),
   SignedOut: ({ children }) => (mocks.signedIn ? null : children),
-  SignInButton: ({ children }) => <>{children}</>,
-  SignUpButton: ({ children }) => <>{children}</>,
+  SignInButton: ({ children, forceRedirectUrl }) => (
+    <span data-testid="sign-in-button" data-redirect={forceRedirectUrl}>{children}</span>
+  ),
+  SignUpButton: ({ children, forceRedirectUrl }) => (
+    <span data-testid="sign-up-button" data-redirect={forceRedirectUrl}>{children}</span>
+  ),
 }))
 
 vi.mock('../components/Layout', () => ({
@@ -103,5 +107,13 @@ describe('InviteAccept', () => {
       await screen.findByText(/Couldn't accept this invite: Invite expired/i)
     ).toBeInTheDocument()
     expect(screen.queryByText('Dashboard page')).not.toBeInTheDocument()
+  })
+
+  it('returns the user to this invite after signing up or in, so it gets accepted', () => {
+    mocks.signedIn = false
+    renderInvite('tok_42')
+
+    expect(screen.getByTestId('sign-up-button')).toHaveAttribute('data-redirect', '/invite/tok_42')
+    expect(screen.getByTestId('sign-in-button')).toHaveAttribute('data-redirect', '/invite/tok_42')
   })
 })

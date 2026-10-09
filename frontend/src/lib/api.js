@@ -29,20 +29,28 @@ function requestError(message, { status = 0, cause } = {}) {
   return err
 }
 
-export async function apiRequest(path, { method = 'GET', body, getToken } = {}) {
-  let token
-  try {
-    token = await withTimeout(
-      Promise.resolve().then(() => getToken()),
-      TOKEN_TIMEOUT_MS,
-      'Sign-in verification timed out. Please refresh the page and try again.'
-    )
-  } catch (err) {
-    // A failed token fetch usually means we're effectively offline, so this
-    // is reported as a network error — queued actions are kept, not dropped.
-    throw requestError(err.message, { cause: err })
-  }
+// The production API runs on Render's free tier, which sleeps after ~15
+// minutes idle and takes 30-60s to wake. While it boots, requests hang or
+// come back 502/503/504. Reads (GET) are safe to repeat, so they are retried
+// with backoff long enough to ride out a cold start; writes are never retried
+// here (the offline queue owns replaying those) so nothing is applied twice.
+const GET_RETRY_DELAYS_MS = [2000, 4000, 8000]
+const COLD_START_STATUSES = new Set([502, 503, 504])
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Fire-and-forget ping that starts waking the backend the moment the app
+// loads, so it is usually warm by the time the user has signed in.
+export function wakeBackend() {
+  if (!API_URL || typeof fetch !== 'function') return
+  try {
+    fetch(`${API_URL}/api/health`, { method: 'GET' }).catch(() => {})
+  } catch {
+    // Never let a warm-up ping break the app.
+  }
+}
+
+async function sendOnce(path, { method, body, token }) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
@@ -59,9 +67,12 @@ export async function apiRequest(path, { method = 'GET', body, getToken } = {}) 
     })
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw requestError('The server took too long to respond. Please try again.', { cause: err })
+      throw requestError(
+        'The server is taking too long to respond (it may be waking up). Please try again in a moment.',
+        { cause: err }
+      )
     }
-    throw requestError('Could not reach the server. Is the backend running?', { cause: err })
+    throw requestError('Could not reach the server. Check your connection and try again.', { cause: err })
   } finally {
     clearTimeout(timeoutId)
   }
@@ -78,6 +89,35 @@ export async function apiRequest(path, { method = 'GET', body, getToken } = {}) 
   }
 
   return res.json()
+}
+
+export async function apiRequest(path, { method = 'GET', body, getToken, retry } = {}) {
+  let token
+  try {
+    token = await withTimeout(
+      Promise.resolve().then(() => getToken()),
+      TOKEN_TIMEOUT_MS,
+      'Sign-in verification timed out. Please refresh the page and try again.'
+    )
+  } catch (err) {
+    // A failed token fetch usually means we're effectively offline, so this
+    // is reported as a network error — queued actions are kept, not dropped.
+    throw requestError(err.message, { cause: err })
+  }
+
+  const canRetry = retry ?? method === 'GET'
+  const delays = canRetry ? GET_RETRY_DELAYS_MS : []
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await sendOnce(path, { method, body, token })
+    } catch (err) {
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+      const coldStart = err.status === 0 || COLD_START_STATUSES.has(err.status)
+      if (attempt >= delays.length || offline || !coldStart) throw err
+      await sleep(delays[attempt])
+    }
+  }
 }
 
 // True when the failure is worth retrying later (offline / server down).

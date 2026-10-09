@@ -87,9 +87,59 @@ describe('apiRequest', () => {
       json: vi.fn().mockRejectedValue(new SyntaxError('Unexpected token <')),
     })
 
-    await expect(apiRequest('/api/account/me', { getToken: vi.fn() })).rejects.toThrow(
-      'Request failed with status 502'
-    )
+    // A write is never retried, so the 502 surfaces straight away.
+    await expect(
+      apiRequest('/api/account/role', { method: 'PATCH', getToken: vi.fn() })
+    ).rejects.toThrow('Request failed with status 502')
+  })
+
+  it('retries a GET through a cold start (503) and then succeeds', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch
+        .mockResolvedValueOnce({ ok: false, status: 503, json: vi.fn().mockResolvedValue({}) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ ok: 1 }) })
+
+      const promise = apiRequest('/api/squads/mine', { getToken: vi.fn() })
+      await vi.advanceTimersByTimeAsync(2000)
+
+      await expect(promise).resolves.toEqual({ ok: 1 })
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('gives up on a GET after the retry budget and reports the last error', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch.mockRejectedValue(new TypeError('Failed to fetch'))
+
+      const promise = apiRequest('/api/squads/mine', { getToken: vi.fn() })
+      const assertion = expect(promise).rejects.toMatchObject({ isNetworkError: true })
+      await vi.advanceTimersByTimeAsync(2000 + 4000 + 8000)
+      await assertion
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(4)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('never retries a write, so nothing is applied twice', async () => {
+    globalThis.fetch.mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(
+      apiRequest('/api/athletes', { method: 'POST', body: { name: 'A' }, getToken: vi.fn() })
+    ).rejects.toMatchObject({ isNetworkError: true })
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a permanent 4xx rejection', async () => {
+    mockResponse({ ok: false, status: 404, json: { error: 'Not found' } })
+
+    await expect(apiRequest('/api/squads/mine', { getToken: vi.fn() })).rejects.toThrow('Not found')
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
   })
 
   it('rejects with a clear error when the auth token never settles', async () => {
