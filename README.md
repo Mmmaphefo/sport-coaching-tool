@@ -259,7 +259,15 @@ is published to Cloudflare Pages via `wrangler`. Manual `wrangler pages deploy`
 is only needed for out-of-band fixes.
 
 > The Render free tier sleeps after ~15 min of inactivity; the first request
-> afterwards takes about a minute to wake up.
+> afterwards takes about a minute to wake up. The
+> [backend keepalive workflow](.gitea/workflows/backend-keepalive.yml) pings
+> `/api/health` every 10 minutes from Gitea Actions so the API stays awake —
+> scheduled workflows only fire from the default branch (it goes live when the
+> file merges to `main`) and only while a runner is online, so if the Actions
+> tab shows no keepalive runs, point any external pinger at the same URL
+> instead (a free cron-job.org job, or a crontab line like
+> `*/10 * * * * curl -fsS https://kickstat-api-i2rc.onrender.com/api/health`).
+> A failing ping turns the workflow red — doubling as a visible "API down" alarm.
 
 ### Deployment inventory
 
@@ -303,6 +311,7 @@ Key deployment files in this repo:
 | `frontend/public/_redirects` | SPA fallback (`/* /index.html 200`) |
 | `wrangler.jsonc` | Cloudflare Pages config (`pages_build_output_dir: frontend/dist`) |
 | `.gitea/workflows/ci.yml` | CI pipeline: lint/tests + coverage for both apps, Postgres address probe, combined coverage dashboard publish, Deploy Production job |
+| `.gitea/workflows/backend-keepalive.yml` | Scheduled `/api/health` ping (every 10 min) that keeps the Render free tier from sleeping |
 
 Never push directly to the GitHub mirror — Gitea `main` is the single source of
 truth and CI keeps the mirror in sync.

@@ -19,6 +19,7 @@ const compareRouter = require('./routes/compare');
 const tacticsRouter = require('./routes/tactics');
 const sessionsRouter = require('./routes/sessions');
 const publicRouter = require('./routes/public');
+const healthRouter = require('./routes/health');
 const { sendEventReminders } = require('./lib/reminders');
 
 const app = express();
@@ -93,9 +94,9 @@ app.use('/api/compare', compareRouter);
 app.use('/api/tactics', tacticsRouter);
 app.use('/api/sessions', sessionsRouter);
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// No auth — Render's deploy health check and the keepalive workflow hit
+// this without a token; see routes/health.js.
+app.use('/api/health', healthRouter);
 
 // Protected route example — requires a logged-in user
 app.get('/api/me', requireAuth(), (req, res) => {
