@@ -161,4 +161,41 @@ describe('apiRequest', () => {
       vi.useRealTimers()
     }
   })
+
+  it('asks Clerk for a token on every retry, never reusing an old one', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({ ok: true, status: 200, json: vi.fn().mockResolvedValue({}) })
+      const getToken = vi.fn().mockResolvedValueOnce('old').mockResolvedValueOnce('new')
+
+      const promise = apiRequest('/api/squads/mine', { getToken })
+      await vi.advanceTimersByTimeAsync(2000)
+      await promise
+
+      expect(getToken).toHaveBeenCalledTimes(2)
+      expect(globalThis.fetch.mock.calls[1][1].headers.Authorization).toBe('Bearer new')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('retries a 401 once with a freshly minted token', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: false, status: 401, json: vi.fn().mockResolvedValue({ error: 'expired' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ ok: 1 }) })
+    const getToken = vi.fn().mockResolvedValueOnce('stale').mockResolvedValueOnce('fresh')
+
+    await expect(apiRequest('/api/squads/mine', { getToken })).resolves.toEqual({ ok: 1 })
+    expect(getToken).toHaveBeenLastCalledWith({ skipCache: true })
+    expect(globalThis.fetch.mock.calls[1][1].headers.Authorization).toBe('Bearer fresh')
+  })
+
+  it('reports a persistent 401 after the single refresh', async () => {
+    mockResponse({ ok: false, status: 401, json: { error: 'You are not signed in.' } })
+
+    await expect(apiRequest('/api/squads/mine', { getToken: vi.fn() })).rejects.toMatchObject({ status: 401 })
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+  })
 })

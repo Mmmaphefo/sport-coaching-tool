@@ -26,7 +26,7 @@ const boxStyle = {
 }
 
 function GuardCheck({ children }) {
-  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { getToken, isLoaded, isSignedIn, signOut } = useAuth()
   const location = useLocation()
   const [squad, setSquad] = useState(null)
   const [role, setRole] = useState(null)
@@ -116,6 +116,9 @@ function GuardCheck({ children }) {
   if (error) {
     // A non-coach account that hasn't accepted an invite yet.
     const unlinked = error.status === 403
+    // The server rejected the sign-in even after a fresh token was minted
+    // (see api.js), so retrying can't help — a clean sign-in will.
+    const signedOutServerSide = error.status === 401
     return (
       <div style={boxStyle} role="alert">
         <h2 style={{ marginBottom: '0.75rem' }}>
@@ -130,6 +133,14 @@ function GuardCheck({ children }) {
           <Link to="/role-select" className="btn btn-gold">
             Enter invite link
           </Link>
+        ) : signedOutServerSide ? (
+          <button
+            type="button"
+            className="btn btn-gold"
+            onClick={() => signOut({ redirectUrl: '/sign-in' })}
+          >
+            Sign in again
+          </button>
         ) : (
           <button type="button" className="btn btn-gold" onClick={retry}>
             Try again

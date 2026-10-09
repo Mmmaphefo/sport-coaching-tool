@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-const authState = { isLoaded: true, isSignedIn: true, getToken: vi.fn() }
+const authState = { isLoaded: true, isSignedIn: true, getToken: vi.fn(), signOut: vi.fn() }
 vi.mock('@clerk/clerk-react', () => ({ useAuth: () => authState }))
 
 const apiRequest = vi.fn()
@@ -79,5 +79,13 @@ describe('OnboardingGuard', () => {
     fail = false
     fireEvent.click(button)
     expect(await screen.findByText('DASHBOARD PAGE')).toBeInTheDocument()
+  })
+
+  it('offers a clean sign-in when the server keeps rejecting the session', async () => {
+    apiRequest.mockRejectedValue(Object.assign(new Error('You are not signed in.'), { status: 401 }))
+    renderAt('/dashboard')
+    const button = await screen.findByRole('button', { name: 'Sign in again' })
+    fireEvent.click(button)
+    expect(authState.signOut).toHaveBeenCalledWith({ redirectUrl: '/sign-in' })
   })
 })

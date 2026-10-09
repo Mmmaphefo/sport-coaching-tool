@@ -91,11 +91,15 @@ async function sendOnce(path, { method, body, token }) {
   return res.json()
 }
 
-export async function apiRequest(path, { method = 'GET', body, getToken, retry } = {}) {
-  let token
+// Clerk session tokens live for only 60 seconds, so a token must never be
+// reused across retries: a cold-start retry loop can easily outlast it and
+// the server then rejects the request as signed out. Each attempt asks Clerk
+// for a token (Clerk returns its cached one while still valid and refreshes
+// it otherwise); skipCache forces a brand-new one.
+async function fetchToken(getToken, { skipCache = false } = {}) {
   try {
-    token = await withTimeout(
-      Promise.resolve().then(() => getToken()),
+    return await withTimeout(
+      Promise.resolve().then(() => (skipCache ? getToken({ skipCache: true }) : getToken())),
       TOKEN_TIMEOUT_MS,
       'Sign-in verification timed out. Please refresh the page and try again.'
     )
@@ -104,14 +108,26 @@ export async function apiRequest(path, { method = 'GET', body, getToken, retry }
     // is reported as a network error — queued actions are kept, not dropped.
     throw requestError(err.message, { cause: err })
   }
+}
 
+export async function apiRequest(path, { method = 'GET', body, getToken, retry } = {}) {
   const canRetry = retry ?? method === 'GET'
   const delays = canRetry ? GET_RETRY_DELAYS_MS : []
 
   for (let attempt = 0; ; attempt++) {
+    const token = await fetchToken(getToken)
     try {
       return await sendOnce(path, { method, body, token })
     } catch (err) {
+      // A 401 can mean the token expired in flight. Retry exactly once with a
+      // freshly minted token before reporting the user as signed out. The
+      // server rejected the request outright, so even a write is safe to
+      // resend here: nothing was applied. It returns directly, so it can
+      // only ever happen once per request.
+      if (err.status === 401) {
+        const fresh = await fetchToken(getToken, { skipCache: true })
+        return sendOnce(path, { method, body, token: fresh })
+      }
       const offline = typeof navigator !== 'undefined' && navigator.onLine === false
       const coldStart = err.status === 0 || COLD_START_STATUSES.has(err.status)
       if (attempt >= delays.length || offline || !coldStart) throw err
