@@ -109,9 +109,10 @@ This page contains the sprint backlogs for Kickstat. Story points follow the sca
 | SUG-01 | Lineup suggestions (T21) | Suggested starting XI + bench from RSVPs, current injuries, recent form and player ratings; read-only endpoints plus a wizard pre-fill that never overwrites coach edits | Lindo | 5 |
 | SUM-01 | Auto post-match summary (T22) | Completed match pages show the wrap-up automatically — outcome badge, scorers with minutes and assists, shots/saves/cards — derived from the live log with no extra request | Lindo | 3 |
 | SEA-01 | Seasons & schedule generator (T17+T23) | Named seasons with their own record, per-match breakdown and printable report, plus a generator that spreads opponents across the season and flags clashes without blocking | Lindo | 8 |
+| FRI-01 | Friendlies (T24) | Propose a friendly to any public squad; the challenged coach accepts or declines, and an accepted match lands on both calendars with clash warnings | Lindo | 5 |
 | FIX-01 | Bug fixes | Address demo feedback | All | 5 |
 | FIX-02 | Coverage push | Add missing tests to reach 75%+ | Kgotlelelo | 5 |
 | DEP-01 | Deploy frontend | Static site deployment | Kgethego | 2 |
 | DEP-02 | Deploy backend | Managed Node.js deployment | Mmaphefo | 3 |
 | DOC-01 | Final docs | Update all documentation | Tasmiya | 3 |
-|  |  | **Total** |  | **55** |
+|  |  | **Total** |  | **60** |

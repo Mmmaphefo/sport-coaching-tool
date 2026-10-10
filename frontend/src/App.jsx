@@ -12,6 +12,7 @@ import MatchReport from './pages/MatchReport'
 import TacticsBoard from './pages/TacticsBoard'
 import Sessions from './pages/Sessions'
 import Seasons from './pages/Seasons'
+import Friendlies from './pages/Friendlies'
 import Setup from './pages/Setup'
 import AccountSettings from './pages/AccountSettings'
 import InviteAccept from './pages/InviteAccept'
@@ -112,6 +113,14 @@ function App() {
           element={
             <OnboardingGuard>
               <Seasons />
+            </OnboardingGuard>
+          }
+        />
+        <Route
+          path="/friendlies"
+          element={
+            <OnboardingGuard>
+              <Friendlies />
             </OnboardingGuard>
           }
         />
