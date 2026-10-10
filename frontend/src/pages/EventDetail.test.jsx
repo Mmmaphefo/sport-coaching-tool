@@ -124,6 +124,30 @@ const simpleMatchPayload = {
   timeline: [],
 }
 
+// A completed 2-2 draw with goals on both sides: enough log for the
+// automatic post-match summary to wrap the match up.
+const finishedMatchPayload = {
+  event: {
+    id: 9,
+    event_type: 'match',
+    format: 'match',
+    opponent: 'United FC',
+    title: null,
+    status: 'completed',
+    event_date: '2026-09-12T18:00:00.000Z',
+    location: null,
+    duration_minutes: 90,
+  },
+  result: { squad: 2, opponent: 2 },
+  penalties: [],
+  timeline: [
+    { id: 201, athlete_id: 4, athlete_name: 'Sam Peters', action_type: 'goal', is_scoring: true, value: 1, minute: 12 },
+    { id: 202, athlete_id: null, athlete_name: null, action_type: 'goal', is_scoring: true, value: 1, minute: 30 },
+    { id: 203, athlete_id: 6, athlete_name: 'Alex Kim', action_type: 'goal', is_scoring: true, value: 1, minute: 55 },
+    { id: 204, athlete_id: null, athlete_name: null, action_type: 'goal', is_scoring: true, value: 1, minute: 88 },
+  ],
+}
+
 // A finished match with discipline entries: the penalties section mixes
 // named cards with opponent penalties (athlete_name null → "Opponent").
 const disciplineMatchPayload = {
@@ -260,5 +284,35 @@ describe('EventDetail', () => {
     expect(within(section).getByText("67'")).toBeInTheDocument()
     expect(within(section).getByText('penalty')).toBeInTheDocument()
     expect(within(section).getByText('Opponent')).toBeInTheDocument()
+  })
+
+  it('shows the automatic post-match summary on a completed match', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/events/9')) return Promise.resolve(finishedMatchPayload)
+      if (path.startsWith('/api/athletes')) return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    renderAt('/events/9')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /United FC/i })).toBeInTheDocument()
+    })
+
+    // The wrap-up is already on the page — no button, no extra request.
+    const summary = document.querySelector('.event-summary')
+    expect(summary).not.toBeNull()
+    expect(within(summary).getByRole('heading', { name: /Post-match summary/i })).toBeInTheDocument()
+    expect(within(summary).getByText('Draw')).toBeInTheDocument()
+    expect(within(summary).getByText(/generated automatically at full time/)).toBeInTheDocument()
+
+    // Our scorers keep their own lines, opposition goals group under the
+    // opponent's name with every minute listed.
+    expect(within(summary).getByText('Sam Peters')).toBeInTheDocument()
+    expect(within(summary).getByText(/1 goal · 12'/)).toBeInTheDocument()
+    expect(within(summary).getByText('Alex Kim')).toBeInTheDocument()
+    expect(within(summary).getByText(/1 goal · 55'/)).toBeInTheDocument()
+    expect(within(summary).getByText('United FC')).toBeInTheDocument()
+    expect(within(summary).getByText(/2 goals · 30', 88'/)).toBeInTheDocument()
   })
 })

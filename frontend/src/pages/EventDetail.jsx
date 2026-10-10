@@ -11,6 +11,7 @@ import VenueMapEditor from '../components/VenueMapEditor'
 import AddressSearchInput from '../components/AddressSearchInput'
 import ClashBanner from '../components/ClashBanner'
 import RsvpPanel from '../components/RsvpPanel'
+import PostMatchSummary from '../components/PostMatchSummary'
 import { useCountUp } from '../lib/useCountUp'
 import './EventDetail.css'
 
@@ -354,6 +355,14 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
             <span className="event-result-label">{event.opponent || 'Opponent'}</span>
           </div>
         </div>
+      )}
+
+      {event.event_type === 'match' && event.status === 'completed' && (
+        <PostMatchSummary
+          result={result}
+          timeline={timeline}
+          opponent={event.opponent || 'Opponent'}
+        />
       )}
 
       {penalties && penalties.length > 0 && (
