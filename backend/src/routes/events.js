@@ -1463,6 +1463,9 @@ router.put('/:id/rsvps/mine', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error setting RSVP:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
