@@ -16,6 +16,7 @@ const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
 const { parseLogMeta } = require('../lib/logMeta');
+const { applyLogEdit } = require('../lib/logEdit');
 
 const router = express.Router();
 
@@ -1305,43 +1306,40 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error creating log entry:', err);
-    res.status(500).json({ error: 'Server error', detail: err.message });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PATCH /api/events/:id/logs/:logId — edit a log entry just made (US14).
-// Staff only.
+// Staff only. Conflict codes (T8): a missing or foreign entry is 404, an
+// entry deleted since the client last saw it is 410 Gone. Editing is
+// present-flag based and stamps edited_at — see lib/logEdit.js.
 router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
     const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
-    const check = await pool.query(
-      `SELECT l.id FROM log_entries l
-       JOIN events e ON e.id = l.event_id
-       WHERE l.id = $1 AND l.event_id = $2 AND e.squad_id = $3 AND l.deleted_at IS NULL AND l.fixture_id IS NULL`,
-      [req.params.logId, req.params.id, squadId]
-    );
-    if (check.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized to edit this log entry' });
+    const event = await pool.query('SELECT id, squad_id FROM events WHERE id = $1', [req.params.id]);
+    if (event.rows.length === 0 || event.rows[0].squad_id !== squadId) {
+      return res.status(404).json({ error: 'Event not found' });
     }
 
-    const { athlete_id, action_type, is_scoring, value, minute, notes } = req.body;
-
-    const result = await pool.query(
-      `UPDATE log_entries
-       SET athlete_id = COALESCE($1, athlete_id),
-           action_type = COALESCE($2, action_type),
-           is_scoring = COALESCE($3, is_scoring),
-           value = COALESCE($4, value),
-           minute = COALESCE($5, minute),
-           notes = COALESCE($6, notes),
-           updated_at = now()
-       WHERE id = $7 RETURNING *`,
-      [athlete_id, action_type, is_scoring, value, minute, notes, req.params.logId]
+    const found = await pool.query(
+      'SELECT * FROM log_entries WHERE id = $1 AND event_id = $2 AND fixture_id IS NULL',
+      [req.params.logId, req.params.id]
     );
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Log entry not found' });
+    }
+    if (found.rows[0].deleted_at) {
+      return res.status(410).json({ error: 'Log entry has been deleted' });
+    }
 
-    res.json(result.rows[0]);
+    const outcome = await applyLogEdit(pool, { row: found.rows[0], body: req.body, squadId });
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
+    }
+    res.status(outcome.status).json(outcome.entry);
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });
@@ -1474,6 +1472,9 @@ router.put('/:id/rsvps/mine', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error setting RSVP:', err.message);
     res.status(500).json({ error: 'Server error' });
   }

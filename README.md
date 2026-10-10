@@ -4,8 +4,6 @@
 
 A full-stack web application for sports coaches and assistants to manage squads, schedule events, log live match data, and run multi-team leagues and tournaments.
 
-![CI](https://sdpm.ms.wits.ac.za/bug-off/sport-coaching-tool/actions/workflows/ci.yml/badge.svg)
-
 ## Features
 
 ### Squad Management
@@ -61,7 +59,7 @@ A full-stack web application for sports coaches and assistants to manage squads,
 ### Public Pages (Sprint 3)
 - Public squad pages and a public landing directory of squads with live events
 - Shareable private links with CSV roster export
-- Email reminders before events and invite emails, both sent via Resend
+- Email reminders before events and invite emails, both sent via Brevo
 
 ## Tech Stack
 
@@ -290,8 +288,8 @@ is only needed for out-of-band fixes.
 
 ### Deployment inventory
 
-Third-party services used by the app: **Clerk** (auth), **Resend** (invite and
-event-reminder emails), **Mapbox** (venue map basemap, address search and
+Third-party services used by the app: **Clerk** (auth), **Brevo** (invite and
+event-reminder emails; Resend is kept as a fallback), **Mapbox** (venue map basemap, address search and
 reverse geocoding - public token baked into the frontend bundle),
 **Open-Meteo** (venue weather, no key required) and the
 **EA FC player ratings dataset** (Hugging Face datasets-server, no key required —
@@ -318,8 +316,12 @@ Environment variables configured on the Render service: `DATABASE_URL` (Neon
 direct connection string — pooling **off**, no `-pooler` host, migrations break
 on the pooled URL), `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
 `CLERK_WEBHOOK_SECRET`, `FRONTEND_URL` (= https://kickstat.pages.dev, drives
-CORS), `RESEND_API_KEY` and `EMAIL_FROM` (invite and reminder emails — both
-channels run through Resend after Gmail SMTP proved unreliable on Render).
+CORS), `BREVO_API_KEY` and `EMAIL_FROM` (invite and reminder emails, sent
+through Brevo; `EMAIL_FROM` must be the verified Brevo sender). Email moved from
+Gmail SMTP to Resend because Render blocks SMTP ports, then from Resend to Brevo
+because Resend only reaches outside recipients from a verified domain, which the
+team does not own. `RESEND_API_KEY` is optional and only used when
+`BREVO_API_KEY` is unset. Full reasoning: docs site, Third-party → Brevo.
 
 Key deployment files in this repo:
 

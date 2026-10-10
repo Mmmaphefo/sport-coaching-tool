@@ -24,7 +24,7 @@ graph TB
 
     subgraph "External Services"
         G[Clerk Auth]
-        H[Resend Email]
+        H[Brevo Email]
         I[Open-Meteo Weather API]
     end
 
@@ -48,7 +48,7 @@ For production, the application will be deployed as follows:
 | Backend | Azure App Service / Railway / Render | Managed Node.js hosting with environment variables |
 | Database | Azure Database for PostgreSQL / Supabase | Managed PostgreSQL with backups |
 | Auth | Clerk (hosted) | No auth infrastructure to maintain |
-| Email | Resend | Reliable transactional email |
+| Email | Brevo | Transactional email to any recipient from one verified sender (replaced Resend, which needs a verified domain) |
 | CI/CD | Gitea Actions + self-hosted runner | Already configured; can add deploy steps |
 
 ## Environment Variables
@@ -60,7 +60,9 @@ For production, the application will be deployed as follows:
 | `CLERK_WEBHOOK_SECRET` | Verifies Clerk webhook signatures |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `FRONTEND_URL` | Base URL for invite links |
-| `RESEND_API_KEY` | Email service API key |
+| `BREVO_API_KEY` | Email service API key (Brevo) |
+| `EMAIL_FROM` | Verified sender address for email |
+| `RESEND_API_KEY` | Optional fallback email key, used only when `BREVO_API_KEY` is unset |
 
 ## CI/CD Pipeline
 

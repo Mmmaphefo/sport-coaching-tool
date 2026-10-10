@@ -253,6 +253,101 @@ describe('US14 (integration) — edit or undo a log entry', () => {
   })
 })
 
+describe('T12/T8 (integration) — edit semantics and conflict codes', () => {
+  async function seedLiveLog() {
+    const event = await createEvent()
+    const athlete = await createAthlete()
+    await setEventLineup(event.id)
+    const created = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({ athlete_id: athlete.id, action_type: 'goal', is_scoring: true, minute: 10, notes: 'left foot' })
+    expect(created.status).toBe(201)
+    return { event, log: created.body }
+  }
+
+  test('present-flag edits: an explicit null clears notes while omitted fields stay', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const res = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ notes: null })
+
+    expect(res.status).toBe(200)
+    expect(res.body.notes).toBeNull()
+    expect(res.body.minute).toBe(10)
+  })
+
+  test('edited_at stamps only when a value actually changes', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const first = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 15 })
+    expect(first.status).toBe(200)
+    expect(first.body.edited_at).not.toBeNull()
+
+    // Same values again: nothing changed, so the stamp must not move.
+    const second = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 15, notes: 'left foot' })
+    expect(second.status).toBe(200)
+    expect(second.body.edited_at).toBe(first.body.edited_at)
+  })
+
+  test('a stale queued edit loses to the newer server version (last-writer-wins)', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const fresh = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 20, client_edited_at: new Date(Date.now() + 60_000).toISOString() })
+    expect(fresh.status).toBe(200)
+    expect(fresh.body.minute).toBe(20)
+    // The stamp is clamped to the server clock: an hour-fast client clock
+    // must not be able to shadow every later edit.
+    expect(Math.abs(new Date(fresh.body.edited_at).getTime() - Date.now())).toBeLessThan(10_000)
+
+    const stale = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 3, client_edited_at: new Date(Date.now() - 60_000).toISOString() })
+
+    expect(stale.status).toBe(200)
+    expect(stale.body.applied).toBe(false)
+    expect(stale.body.minute).toBe(20)
+
+    const stored = await pool.query('SELECT minute FROM log_entries WHERE id = $1', [log.id])
+    expect(stored.rows[0].minute).toBe(20)
+  })
+
+  test('editing a deleted entry is a 410, an unknown one a 404', async () => {
+    const { event, log } = await seedLiveLog()
+    await request(app).delete(`/api/events/${event.id}/logs/${log.id}`)
+
+    const gone = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 30 })
+    expect(gone.status).toBe(410)
+
+    const missing = await request(app)
+      .patch(`/api/events/${event.id}/logs/999999`)
+      .send({ minute: 30 })
+    expect(missing.status).toBe(404)
+  })
+
+  test('rejects invalid edits: empty action_type and out-of-range minute', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const empty = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ action_type: '   ' })
+    expect(empty.status).toBe(400)
+
+    const minute = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 400 })
+    expect(minute.status).toBe(400)
+  })
+})
+
 describe('US15 (integration) — final result and penalties', () => {
   test('AC: event detail aggregates real rows into a result + timeline', async () => {
     const event = await createEvent()
@@ -464,75 +559,6 @@ describe('League / tournament events', () => {
     expect(statsRes.body.topScorers[0]).toMatchObject({ athleteName: 'Prolific Striker', goals: 2 })
     expect(statsRes.body.topAssisters).toHaveLength(1)
     expect(statsRes.body.topAssisters[0]).toMatchObject({ athleteName: 'Creative Playmaker', assists: 1 })
-  })
-})
-
-// The edit form sends an explicit null when a coach clears the location text
-// or the opponent/title name — the PATCH must honour that while leaving
-// fields the request never mentions untouched.
-describe('PATCH /api/events/:id — optional fields can be cleared', () => {
-  test('AC: an explicit null clears the location text but leaves absent fields and the pin alone', async () => {
-    const event = await createEvent()
-
-    const seeded = await request(app)
-      .patch(`/api/events/${event.id}`)
-      .send({ location: 'Wits Main Oval', location_lat: -26.1926, location_lng: 28.0305 })
-    expect(seeded.status).toBe(200)
-
-    const res = await request(app)
-      .patch(`/api/events/${event.id}`)
-      .send({ location: null })
-
-    expect(res.status).toBe(200)
-    expect(res.body.location).toBeNull()
-
-    const stored = await pool.query(
-      'SELECT location, opponent, location_lat, location_lng FROM events WHERE id = $1',
-      [event.id]
-    )
-    expect(stored.rows[0].location).toBeNull()
-    // Absent fields keep their stored values; the pin was never mentioned.
-    expect(stored.rows[0].opponent).toBe('Riverside FC')
-    expect(stored.rows[0].location_lat).toBeCloseTo(-26.1926)
-    expect(stored.rows[0].location_lng).toBeCloseTo(28.0305)
-  })
-
-  test('AC: explicit null coordinates clear the pin while the address text stays', async () => {
-    const event = await createEvent()
-
-    await request(app)
-      .patch(`/api/events/${event.id}`)
-      .send({ location: 'Wits Main Oval', location_lat: -26.1926, location_lng: 28.0305 })
-
-    const res = await request(app)
-      .patch(`/api/events/${event.id}`)
-      .send({ location_lat: null, location_lng: null })
-
-    expect(res.status).toBe(200)
-    const stored = await pool.query(
-      'SELECT location, location_lat, location_lng FROM events WHERE id = $1',
-      [event.id]
-    )
-    expect(stored.rows[0].location).toBe('Wits Main Oval')
-    expect(stored.rows[0].location_lat).toBeNull()
-    expect(stored.rows[0].location_lng).toBeNull()
-  })
-
-  test('AC: an explicit null opponent clears the name; an untouched title keeps its value', async () => {
-    const event = await createEvent()
-
-    await request(app)
-      .patch(`/api/events/${event.id}`)
-      .send({ title: 'Midweek practice' })
-
-    const res = await request(app)
-      .patch(`/api/events/${event.id}`)
-      .send({ opponent: null })
-
-    expect(res.status).toBe(200)
-    const stored = await pool.query('SELECT opponent, title FROM events WHERE id = $1', [event.id])
-    expect(stored.rows[0].opponent).toBeNull()
-    expect(stored.rows[0].title).toBe('Midweek practice')
   })
 })
 

@@ -16,6 +16,7 @@ const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
 const { parseLogMeta } = require('../lib/logMeta');
+const { applyLogEdit } = require('../lib/logEdit');
 
 const router = express.Router();
 
@@ -582,11 +583,12 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error creating fixture log entry:', err);
-    res.status(500).json({ error: 'Server error', detail: err.message });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// PATCH /api/fixtures/:id/logs/:logId
+// PATCH /api/fixtures/:id/logs/:logId — edit a live log entry. Staff only.
+// Conflict codes mirror the event route (T8): unknown entry 404, deleted 410.
 router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
@@ -601,31 +603,22 @@ router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Only the home team can edit logs' });
     }
 
-    const check = await pool.query(
-      `SELECT id FROM log_entries
-       WHERE id = $1 AND fixture_id = $2 AND deleted_at IS NULL`,
+    const found = await pool.query(
+      'SELECT * FROM log_entries WHERE id = $1 AND fixture_id = $2',
       [req.params.logId, req.params.id]
     );
-    if (check.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized to edit this log entry' });
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Log entry not found' });
+    }
+    if (found.rows[0].deleted_at) {
+      return res.status(410).json({ error: 'Log entry has been deleted' });
     }
 
-    const { athlete_id, action_type, is_scoring, value, minute, notes } = req.body;
-
-    const result = await pool.query(
-      `UPDATE log_entries
-       SET athlete_id = COALESCE($1, athlete_id),
-           action_type = COALESCE($2, action_type),
-           is_scoring = COALESCE($3, is_scoring),
-           value = COALESCE($4, value),
-           minute = COALESCE($5, minute),
-           notes = COALESCE($6, notes),
-           updated_at = now()
-       WHERE id = $7 RETURNING *`,
-      [athlete_id, action_type, is_scoring, value, minute, notes, req.params.logId]
-    );
-
-    res.json(result.rows[0]);
+    const outcome = await applyLogEdit(pool, { row: found.rows[0], body: req.body, squadId });
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
+    }
+    res.status(outcome.status).json(outcome.entry);
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });

@@ -1,62 +1,43 @@
 ---
-sidebar_position: 4
+sidebar_position: 8
 ---
 
-# Resend Email Delivery
+# Resend Email Delivery (previous provider)
 
-## What Resend does for us
+:::info Replaced by Brevo
+Kickstat now sends email through **[Brevo](brevo)**. Resend is still supported as a **fallback**: the backend uses it only when `BREVO_API_KEY` is not set. The full reasoning for the change is in the [Brevo decision record](brevo#why-we-use-brevo-decision-record).
+:::
 
-[Resend](https://resend.com) is the transactional email service for Kickstat. It sends:
+## What Resend did for us
 
-- **Assistant invite emails** with a sign-up link when a coach invites an assistant coach during onboarding.
-- **Event reminder emails** to coaches when a scheduled event is within 24 hours.
+[Resend](https://resend.com) was Kickstat's transactional email service from Sprint 2. It replaced Gmail SMTP, which could not work in production because Render's free plan blocks outbound SMTP ports. Resend sends over HTTPS instead. It sent:
 
-We chose Resend because it has a straightforward Node.js SDK and a generous free tier for development.
+- **Invite emails** to assistants and players.
+- **Event reminder emails** to coaches when a scheduled event was within 24 hours.
 
-## Where Resend is used
+We originally chose Resend for its straightforward Node.js SDK and generous free tier.
 
-| Feature | File | Purpose |
-|---|---|---|
-| Assistant invites | `backend/src/lib/email.js` | `resend.emails.send(...)` sends the invite link if `RESEND_API_KEY` is configured. |
-| Event reminders | `backend/src/lib/reminders.js` | The hourly sweep calls `resend.emails.send(...)` for upcoming events whose `reminder_sent` flag is still `false`. |
+## Why we moved away from it
 
-## Required environment variables
+On a free Resend account without a **verified domain**, Resend only delivers to the account owner's own email address. Every other recipient is refused:
 
-Add these to `backend/.env`:
-
-```bash
-RESEND_API_KEY=re_...
-EMAIL_FROM=KickStat <reminders@example.com>
+```text
+You can only send testing emails to your own email address (...).
+To send emails to other recipients, please verify a domain at resend.com/domains.
 ```
 
-You can create an API key in the Resend dashboard under **API keys**.
+Our team does not own a domain, and `kickstat.pages.dev` cannot be verified because it belongs to Cloudflare. In practice, invitees never received their invite emails. Brevo can send to anyone from a single verified sender address, without a domain. See the [decision record](brevo#why-we-use-brevo-decision-record).
 
-## Local development notes
+## Using Resend again
 
-- If `RESEND_API_KEY` is not set, the backend logs a skip message and continues normally. This is useful for local development and CI where real email delivery is not needed.
-- On a **free Resend account**, you can only send emails **to your own email address** (the address used to sign up for Resend) unless you verify a custom domain. If you try to send to another recipient, Resend returns a 403 error:
+Resend still works in the code (`backend/src/lib/email.js`). To use it:
 
-  ```text
-  You can only send testing emails to your own email address (...).
-  To send emails to other recipients, please verify a domain at resend.com/domains.
-  ```
+1. Remove `BREVO_API_KEY` from the environment, so the backend falls back to Resend.
+2. Set `RESEND_API_KEY=re_...`.
+3. Verify a domain you own in the Resend dashboard (**Domains → Add domain**, then add the DNS records it shows at your registrar).
+4. Set `EMAIL_FROM` to an address on that domain, for example `KickStat <reminders@yourdomain.com>`.
 
-- For testing invites or reminders, use your own email address or a Gmail `+` alias of your own address (for example `youremail+coach@gmail.com`).
-
-## Verifying a domain (optional)
-
-To send emails to arbitrary recipients:
-
-1. Own a domain (for example from Namecheap, GoDaddy, etc.).
-2. In the Resend dashboard go to **Domains → Add domain**.
-3. Enter the domain and region.
-4. Add the DNS records Resend provides to your domain registrar's DNS settings.
-5. Wait for Resend to verify the domain.
-6. Update `EMAIL_FROM` in `backend/.env` to use an address on that domain, for example:
-
-   ```bash
-   EMAIL_FROM=KickStat <reminders@yourdomain.com>
-   ```
+Without a verified domain, Resend only reaches the account owner's address, which is enough for local testing only. For local testing, a Gmail `+` alias of your own address (for example `youremail+coach@gmail.com`) also works.
 
 ## Compliance / attribution
 

@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "NODE_ENV=test vitest run tests/integration",
-    "test:coverage": "NODE_ENV=test vitest run tests/integration --coverage",
+    "test": "NODE_ENV=test vitest run tests/integration tests/unit",
+    "test:coverage": "NODE_ENV=test vitest run tests/integration tests/unit --coverage",
     "test:watch": "vitest tests/integration",
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",

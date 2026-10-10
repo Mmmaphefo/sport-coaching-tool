@@ -49,7 +49,7 @@ graph TB
 
     subgraph External
         N[Clerk]
-        O[Resend]
+        O[Brevo]
         P[Open-Meteo Weather API]
     end
 

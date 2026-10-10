@@ -13,7 +13,7 @@ KickStat is deployed across three free-tier services, each chosen for a specific
 | Backend API | **Render** | Node.js REST API | `kickstat-api.onrender.com` |
 | Database | **Neon** | Managed PostgreSQL | Serverless, auto-suspend |
 | Frontend | **Cloudflare Pages** | Static React SPA | `kickstat.pages.dev` |
-| Email | **Resend** | Transactional emails | API-based delivery |
+| Email | **Brevo** | Transactional emails | HTTPS API delivery (replaced Resend) |
 | Auth | **Clerk** | User authentication | Hosted sign-in/sign-up |
 
 ---
@@ -45,7 +45,7 @@ KickStat is deployed across three free-tier services, each chosen for a specific
 ### Trade-offs
 
 - **Cold starts** — Render's free tier spins down after 15 minutes of inactivity. The first request after idle can take 30-50 seconds. This is acceptable for a demo/academic project but would need upgrading for production use.
-- **SMTP blocked** — Render's free plan blocks outbound SMTP ports (25, 465, 587). This is why we switched from Gmail SMTP to Resend's HTTP API for email delivery.
+- **SMTP blocked** — Render's free plan blocks outbound SMTP ports (25, 465, 587). This is why we switched from Gmail SMTP to an HTTP email API: first Resend, then **Brevo**, because Resend cannot send to outside recipients without a verified domain we own. See the [Brevo decision record](../third-party/brevo#why-we-use-brevo-decision-record).
 
 ---
 
@@ -137,7 +137,7 @@ KickStat is deployed across three free-tier services, each chosen for a specific
 2. **React makes API calls** → Requests go to `kickstat-api.onrender.com` (configured via `VITE_API_URL`)
 3. **Render handles auth** → Clerk middleware validates the user's session
 4. **Render queries the database** → Direct connection to Neon's PostgreSQL
-5. **Email notifications** → Resend API sends invite/reminder emails (HTTP, not SMTP)
+5. **Email notifications** → Brevo API sends invite/reminder emails (HTTP, not SMTP)
 
 ---
 
@@ -151,7 +151,9 @@ The deployment requires these environment variables, configured in Render's dash
 | `CLERK_SECRET_KEY` | Clerk dashboard | Server-side auth verification |
 | `CLERK_PUBLISHABLE_KEY` | Clerk dashboard | Client-side auth (baked into frontend build) |
 | `FRONTEND_URL` | Cloudflare Pages URL | CORS allowlist + email links |
-| `RESEND_API_KEY` | Resend dashboard | Transactional email delivery |
+| `BREVO_API_KEY` | Brevo dashboard (SMTP & API → API Keys) | Transactional email delivery |
+| `EMAIL_FROM` | Verified Brevo sender | Sender address, e.g. `KickStat <kickstat.team@gmail.com>` |
+| `RESEND_API_KEY` | Resend dashboard | Optional fallback, used only when `BREVO_API_KEY` is unset |
 | `NODE_ENV` | Set to `production` | Enables production mode in Express |
 
 ---

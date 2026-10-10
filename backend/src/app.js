@@ -193,6 +193,16 @@ async function runAutoTransitionSweep() {
 runAutoTransitionSweep();
 setInterval(runAutoTransitionSweep, 60 * 1000);
 
+// Safety net: any error that escapes a route handler is answered as JSON,
+// never Express's default HTML page (which includes a stack trace outside
+// production). Details go to the server log only.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(`Unhandled error on ${req.method} ${req.originalUrl}:`, err);
+  if (res.headersSent) return;
+  res.status(err.status || 500).json({ error: err.status && err.status < 500 ? err.message : 'Server error' });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
