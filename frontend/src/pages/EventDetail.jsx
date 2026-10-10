@@ -41,7 +41,11 @@ function MatchSummaryPanel({ id, getToken, status }) {
     let cancelled = false
     apiRequest(`/api/events/${id}/summary`, { getToken })
       .then((data) => {
-        if (!cancelled) setSummary(data)
+        // Bonus panel: only accept a well-shaped summary so a bad payload
+        // can never take the whole page down with it.
+        if (!cancelled && data && data.stats && Array.isArray(data.highlights)) {
+          setSummary(data)
+        }
       })
       .catch(() => {})
     return () => {

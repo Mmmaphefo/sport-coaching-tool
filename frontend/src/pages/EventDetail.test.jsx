@@ -124,6 +124,22 @@ const simpleMatchPayload = {
   timeline: [],
 }
 
+// Mirrors the GET /api/events/:id/summary envelope (buildMatchSummary).
+const summaryPayload = {
+  event_id: 7,
+  status: 'completed',
+  headline: 'KickStat FC 3-1 Rovers FC — Victory',
+  result: 'win',
+  gf: 3,
+  ga: 1,
+  narrative: "KickStat FC's goals came from Thabo Maseko (12') and Lerato Khoza (38'). Rovers FC replied on 71'.",
+  highlights: [
+    { minute: 12, kind: 'goal', text: "First goal: Thabo Maseko 12'" },
+    { minute: 71, kind: 'goal', text: "Final strike: Sipho Nkosi 71'" },
+  ],
+  stats: { goals: 3, yellowCards: 1, redCards: 0, penaltiesScored: 0, penaltiesMissed: 0 },
+}
+
 function renderAt(path) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -140,6 +156,8 @@ describe('EventDetail', () => {
     mocks.getToken.mockResolvedValue('test-token')
 
     mocks.apiRequest.mockImplementation((path) => {
+      // The summary endpoint must not be swallowed by the /api/events/7 prefix.
+      if (path.endsWith('/summary')) return Promise.resolve(summaryPayload)
       if (path.startsWith('/api/events/5')) return Promise.resolve(leaguePayload)
       if (path.startsWith('/api/events/6')) return Promise.resolve(openLeaguePayload)
       if (path.startsWith('/api/events/7')) return Promise.resolve(simpleMatchPayload)
