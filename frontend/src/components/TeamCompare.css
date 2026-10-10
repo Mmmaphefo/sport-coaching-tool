@@ -1,0 +1,298 @@
+/* Team comparison (T19). Uses only tokens defined in index.css so it follows
+   the light/dark theme. "Us" is always blue, opponents always the soft ink,
+   so the two sides read the same way in every row and table. */
+
+.tc-heading {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 1.25rem;
+  color: var(--color-ink);
+}
+
+.tc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  padding: 1.25rem;
+  background: var(--color-chalk);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+}
+
+.tc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  min-width: 10rem;
+}
+
+.tc-field select,
+.tc-field input {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 400;
+}
+
+.tc-field select:focus-visible,
+.tc-field input:focus-visible {
+  outline: 2px solid var(--color-blue);
+  outline-offset: 2px;
+}
+
+.tc-range {
+  margin: 0.9rem 0 1.5rem;
+  color: var(--color-ink-soft);
+  font-size: 0.9rem;
+}
+
+.tc-muted,
+.tc-empty {
+  color: var(--color-ink-soft);
+}
+
+.tc-empty {
+  padding: 2rem 1.25rem;
+  text-align: center;
+  border: 1px dashed var(--color-line);
+  border-radius: 12px;
+}
+
+.tc-body {
+  display: grid;
+  gap: 1.75rem;
+  transition: opacity 0.15s ease;
+}
+
+.tc-body-loading {
+  opacity: 0.55;
+}
+
+/* Record strip: the headline numbers for the period. */
+.tc-record {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0;
+  margin: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.tc-record > div {
+  padding: 1rem 1.1rem;
+  border-right: 1px solid var(--color-line);
+}
+
+.tc-record > div:last-child {
+  border-right: none;
+}
+
+.tc-record dt {
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+.tc-record dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-delta {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-ink-soft);
+}
+
+.tc-delta-up {
+  color: #1f8a4c;
+}
+
+.tc-delta-down {
+  color: #c0392b;
+}
+
+[data-theme="dark"] .tc-delta-up {
+  color: #6fd39a;
+}
+
+[data-theme="dark"] .tc-delta-down {
+  color: #f08a80;
+}
+
+/* Us vs opponents: one shared bar per stat, split by share. */
+.tc-sides {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.tc-sides-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.tc-sides-head span:first-child {
+  color: var(--color-blue);
+}
+
+.tc-sides-head span:last-child {
+  color: var(--color-ink-soft);
+}
+
+.tc-side-row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 2.5rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tc-side-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-side-value-them {
+  text-align: right;
+  color: var(--color-ink-soft);
+}
+
+.tc-side-label {
+  display: block;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-ink);
+  margin-bottom: 0.3rem;
+}
+
+.tc-side-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-line);
+}
+
+.tc-side-bar-us {
+  background: var(--color-blue);
+  transition: width 0.3s ease;
+}
+
+/* Tables scroll inside themselves on narrow screens. */
+.tc-table-wrap {
+  overflow-x: auto;
+}
+
+.tc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-table caption {
+  text-align: left;
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+  color: var(--color-ink);
+}
+
+.tc-table th,
+.tc-table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--color-line);
+  text-align: right;
+  color: var(--color-ink);
+}
+
+.tc-table th:first-child {
+  text-align: left;
+}
+
+.tc-table thead th {
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+  font-weight: 600;
+}
+
+.tc-table abbr {
+  text-decoration: none;
+}
+
+/* Tabs on the Compare page. */
+.cmp-tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-chalk);
+}
+
+.cmp-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cmp-tab[aria-selected="true"] {
+  background: var(--color-ink);
+  color: var(--color-canvas);
+}
+
+.cmp-tab:focus-visible {
+  outline: 2px solid var(--color-blue);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .tc-record > div {
+    border-right: none;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .tc-record > div:last-child {
+    border-bottom: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-body,
+  .tc-side-bar-us {
+    transition: none;
+  }
+}
+
+.tc-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.tc-heading-row .tc-heading {
+  margin: 0;
+}

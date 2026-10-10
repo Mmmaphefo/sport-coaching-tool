@@ -14,39 +14,69 @@ const fixturesRouter = require('./routes/fixtures');
 const invitesRouter = require('./routes/invites');
 const accountRouter = require('./routes/account');
 const weatherRouter = require('./routes/weather');
-const seasonsRouter = require('./routes/seasons');
-const friendliesRouter = require('./routes/friendlies');
-const leaderboardRouter = require('./routes/leaderboard');
 const injuriesRouter = require('./routes/injuries');
 const compareRouter = require('./routes/compare');
+const reportsRouter = require('./routes/reports');
 const tacticsRouter = require('./routes/tactics');
 const sessionsRouter = require('./routes/sessions');
+const seasonsRouter = require('./routes/seasons');
+const friendliesRouter = require('./routes/friendlies');
 const publicRouter = require('./routes/public');
+const healthRouter = require('./routes/health');
 const { sendEventReminders } = require('./lib/reminders');
 
 const app = express();
 
 app.use('/webhooks', webhooksRouter);
-app.use(cors({
-  // FRONTEND_URL carries the deployed frontend origin (set on the hosting
-  // platform); the extra ports cover local Vite dev servers, which bump the
-  // port when 5173 is already in use.
-  origin: [
-    process.env.FRONTEND_URL,
+// FRONTEND_URL carries the deployed frontend origin (set on the hosting
+// platform). It is normalised because a trailing slash or stray whitespace in
+// the dashboard value ("https://kickstat.pages.dev/") silently fails every
+// browser request with a CORS error. Several origins may be given
+// comma-separated, and Cloudflare Pages preview deploys
+// (<hash>.<project>.pages.dev) of a configured pages.dev origin are allowed.
+// The localhost ports cover Vite dev servers, which bump the port when 5173
+// is already in use.
+const normaliseOrigin = (o) => o.trim().replace(/\/+$/, '').toLowerCase();
+const allowedOrigins = new Set(
+  [
+    ...(process.env.FRONTEND_URL || '').split(','),
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',
-  ].filter(Boolean),
+  ]
+    .map(normaliseOrigin)
+    .filter(Boolean)
+);
+const pagesProjects = [...allowedOrigins]
+  .map((o) => o.match(/^https:\/\/([a-z0-9-]+)\.pages\.dev$/))
+  .filter(Boolean)
+  .map((m) => m[1]);
+
+function isAllowedOrigin(origin) {
+  // Non-browser clients (curl, health checks, server-to-server) send none.
+  if (!origin) return true;
+  const o = normaliseOrigin(origin);
+  if (allowedOrigins.has(o)) return true;
+  return pagesProjects.some((p) =>
+    new RegExp(`^https://[a-z0-9-]+\\.${p}\\.pages\\.dev$`).test(o)
+  );
+}
+
+app.use(cors({
+  origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
   credentials: true,
 }));
 // Raised from the 100kb default so profile-photo data URLs (already
 // downscaled in the browser) fit without hitting a 413.
 app.use(express.json({ limit: '1mb' }));
-app.use('/api/dashboard', dashboardRouter);
 // No auth middleware — the token in the URL is the access control (see
-// public.js). Mounted before clerkMiddleware like /api/dashboard above.
+// public.js). Mounted before clerkMiddleware so a Clerk outage or key
+// problem can never take the public squad pages down with it.
 app.use('/api/public', publicRouter);
+// Registered before every authenticated router so getAuth()/requireAuth()
+// work everywhere (including /api/dashboard).
 app.use(clerkMiddleware());
+app.use('/api/dashboard', dashboardRouter);
 
 // Moved here from before `const app = express()` — that's what was crashing
 // the server. Everything else in this block is unchanged from what you sent.
@@ -62,17 +92,17 @@ app.use('/api/fixtures', fixturesRouter);
 app.use('/api/invites', invitesRouter);
 app.use('/api/account', accountRouter);
 app.use('/api/weather', weatherRouter);
-app.use('/api/seasons', seasonsRouter);
-app.use('/api/friendlies', friendliesRouter);
-app.use('/api/leaderboard', leaderboardRouter);
 app.use('/api/injuries', injuriesRouter);
 app.use('/api/compare', compareRouter);
+app.use('/api/reports', reportsRouter);
 app.use('/api/tactics', tacticsRouter);
 app.use('/api/sessions', sessionsRouter);
+app.use('/api/seasons', seasonsRouter);
+app.use('/api/friendlies', friendliesRouter);
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// No auth — Render's deploy health check and the keepalive workflow hit
+// this without a token; see routes/health.js.
+app.use('/api/health', healthRouter);
 
 // Protected route example — requires a logged-in user
 app.get('/api/me', requireAuth(), (req, res) => {
@@ -162,6 +192,16 @@ async function runAutoTransitionSweep() {
 
 runAutoTransitionSweep();
 setInterval(runAutoTransitionSweep, 60 * 1000);
+
+// Safety net: any error that escapes a route handler is answered as JSON,
+// never Express's default HTML page (which includes a stack trace outside
+// production). Details go to the server log only.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(`Unhandled error on ${req.method} ${req.originalUrl}:`, err);
+  if (res.headersSent) return;
+  res.status(err.status || 500).json({ error: err.status && err.status < 500 ? err.message : 'Server error' });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

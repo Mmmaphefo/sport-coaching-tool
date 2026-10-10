@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
 const { getOwnedSquadId } = require('./_squad');
+const { loadTeamMatches, summarise } = require('../lib/teamStats');
 
 const router = express.Router();
 
@@ -248,6 +249,45 @@ router.get('/summary', requireAuth(), async (req, res) => {
     });
   } catch (err) {
     console.error('Error building dashboard summary:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/dashboard/trends — the squad's completed-match record over time
+// (T18): every finished match, simple or league fixture, oldest first, with
+// per-match score and result letters. This is the same aggregation the
+// reports and the team comparison build on (lib/teamStats.js), so the form
+// chart, the printable reports and the public leaderboard can never tell
+// three different stories about the same match.
+router.get('/trends', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    // Rolling 12-month window — long enough to hold any season without
+    // dragging years-old matches into the trend charts.
+    const now = new Date();
+    const from = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    const toExclusive = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const all = await loadTeamMatches(pool, squadId, { from, toExclusive });
+    const matches = all.slice(-20).map((m) => ({
+      kind: m.kind,
+      id: m.id,
+      date: m.date,
+      opponent: m.opponent,
+      competition: m.competition || null,
+      goalsFor: m.us.goals,
+      goalsAgainst: m.them.goals,
+      result: m.result,
+    }));
+
+    res.json({
+      matches,
+      summary: summarise(all),
+    });
+  } catch (err) {
+    console.error('Error building squad trends:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

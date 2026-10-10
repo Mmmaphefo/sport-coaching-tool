@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
 const { getOwnedSquadId } = require('./_squad');
+const { loadTeamMatches, summarise, byOpponent, parseRange } = require('../lib/teamStats');
 
 const router = express.Router();
 
@@ -80,6 +81,46 @@ router.get('/athletes', requireAuth(), async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching comparison:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/compare/team?from=YYYY-MM-DD&to=YYYY-MM-DD[&vs_from=…&vs_to=…]
+// The squad against its opponents over a period (T19): record, goals, shots,
+// saves, cards and penalties for both sides, plus a per-opponent breakdown.
+// With vs_from/vs_to it also returns a second period, so a coach can compare
+// e.g. this season against last season. Dates are inclusive.
+router.get('/team', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadId(pool, clerkUserId);
+
+    const { from, to, vs_from: vsFrom, vs_to: vsTo } = req.query;
+    const range = parseRange(from, to, 'Period');
+    const hasVs = vsFrom !== undefined || vsTo !== undefined;
+    const vsRange = hasVs ? parseRange(vsFrom, vsTo, 'Comparison period') : null;
+
+    const matches = await loadTeamMatches(pool, squadId, range);
+    const body = {
+      period: { from, to, summary: summarise(matches), opponents: byOpponent(matches), matches },
+      comparePeriod: null,
+    };
+    if (vsRange) {
+      const vsMatches = await loadTeamMatches(pool, squadId, vsRange);
+      body.comparePeriod = {
+        from: vsFrom,
+        to: vsTo,
+        summary: summarise(vsMatches),
+        opponents: byOpponent(vsMatches),
+        matches: vsMatches,
+      };
+    }
+    res.json(body);
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Error comparing team:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

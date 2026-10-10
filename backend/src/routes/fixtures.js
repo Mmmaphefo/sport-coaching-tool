@@ -2,20 +2,21 @@ const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
 const { getOwnedSquadId, getOwnedSquadIdForStaff, getOrCreateUserId } = require('./_squad');
-const { buildMatchSummary } = require('../lib/summary');
 const {
   getLineup,
   getAthleteSquads,
   validateLineupPayload,
   saveLineup,
   lineupCheckForLog,
-  applySubstitution,
+  applySubstitutionInTx,
 } = require('../lib/lineups');
 const { ensureRatings, squadFromRows, ratingsPayload } = require('../lib/ratings');
+const { buildLineupSuggestions } = require('../lib/lineupSuggestions');
 const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
-
+const { parseLogMeta } = require('../lib/logMeta');
+const { applyLogEdit } = require('../lib/logEdit');
 
 const router = express.Router();
 
@@ -46,7 +47,7 @@ async function getFixtureLogs(pool, fixtureId) {
      FROM log_entries l
      LEFT JOIN athletes a ON a.id = l.athlete_id
      WHERE l.fixture_id = $1 AND l.deleted_at IS NULL
-     ORDER BY l.minute NULLS LAST, l.logged_at`,
+     ORDER BY l.minute NULLS LAST, COALESCE(l.occurred_at, l.logged_at) ASC, l.id ASC`,
     [fixtureId]
   );
   return result.rows;
@@ -178,41 +179,6 @@ router.patch('/:id', requireAuth(), async (req, res) => {
   }
 });
 
-// GET /api/fixtures/:id/summary — T22 auto post-match summary from the
-// home side's recorded timeline. Scores use the same convention as fixture
-// logging: athlete goals are home goals, athlete-less goals are away goals.
-router.get('/:id/summary', requireAuth(), async (req, res) => {
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
-
-    const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
-    if (!fixture) {
-      return res.status(404).json({ error: 'Fixture not found' });
-    }
-
-    const logs = classifyFixtureSides(await getFixtureLogs(pool, fixture.id), fixture.home_squad_id === squadId);
-    const gf = logs
-      .filter((l) => l.is_scoring && l.side === 'us')
-      .reduce((sum, l) => sum + l.value, 0);
-    const ga = logs
-      .filter((l) => l.is_scoring && l.side === 'them')
-      .reduce((sum, l) => sum + l.value, 0);
-
-    const summary = buildMatchSummary(logs, {
-      squadName: fixture.home_squad_id === squadId ? fixture.home_squad_name : fixture.away_squad_name,
-      opponent: fixture.home_squad_id === squadId ? fixture.away_squad_name : fixture.home_squad_name,
-      gf,
-      ga,
-    });
-
-    res.json({ fixture_id: fixture.id, status: fixture.status, ...summary });
-  } catch (err) {
-    console.error('Error building fixture summary:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
 // PUT /api/fixtures/:id/lineup — set both teams' starting XI + bench.
 // Logging stays locked until a lineup exists. Saving is allowed any time
 // before completion; saving once kickoff has passed starts the fixture,
@@ -277,15 +243,36 @@ router.put('/:id/lineup', requireAuth(), async (req, res) => {
   }
 });
 
-// athlete_id != NULL goals are the home side's (only the home team logs), so
-// "us" vs "them" depends on which side our squad is.
-function classifyFixtureSides(logs, weAreHome) {
-  return logs.map((l) => {
-    const goalIsHome = l.athlete_id != null;
-    const ours = weAreHome ? goalIsHome : !goalIsHome;
-    return { ...l, side: ours ? 'us' : 'them' };
-  });
-}
+// GET /api/fixtures/:id/lineup/suggestions — the same suggestion engine as
+// simple events, scoped to the home side (the side this coach sets lineups
+// for). RSVPs are read from the fixture's league event, where the squad
+// confirms them. Read-only; staff only.
+router.get('/:id/lineup/suggestions', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+
+    const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
+    if (!fixture) {
+      return res.status(404).json({ error: 'Fixture not found' });
+    }
+    if (fixture.home_squad_id !== squadId) {
+      return res.status(403).json({ error: 'Only the home team can request lineup suggestions here' });
+    }
+
+    const suggestions = await buildLineupSuggestions(pool, {
+      eventId: fixture.event_id,
+      squadId: fixture.home_squad_id,
+    });
+    res.json(suggestions);
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Error building fixture lineup suggestions:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // POST /api/fixtures/:id/simulate — build a full 90-minute script for this
 // fixture from the saved lineups plus each player's rating.
@@ -418,6 +405,14 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       }
     }
 
+    // T5/T9: device_id and occurred_at travel with offline-queued logs — the
+    // timeline orders by occurred_at (falling back to logged_at) so a replay
+    // that arrives late still slots in where it happened.
+    const meta = parseLogMeta(req.body);
+    if (meta.error) {
+      return res.status(400).json({ error: meta.error });
+    }
+
     if (fixture.status === 'cancelled') {
       return res.status(400).json({ error: 'Fixture is cancelled' });
     }
@@ -487,14 +482,6 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       }
     }
 
-    if (isSubstitutionSwap) {
-      const substitutionError = await applySubstitution(
-        pool, { fixtureId: fixture.id }, Number(athlete_id), Number(substitute_athlete_id)
-      );
-      if (substitutionError) {
-        return res.status(400).json({ error: substitutionError });
-      }
-    }
 
     // A goal may carry its assist in the same request; the assist becomes a
     // linked log entry so stats and the timeline stay consistent.
@@ -527,11 +514,12 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     const client = await pool.connect();
     let createdEntry;
+    let substitutionError = null;
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, client_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, client_id, device_id, occurred_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
         [
           fixture.event_id,
           fixture.id,
@@ -543,18 +531,31 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
           entryNotes,
           userId,
           clientId,
+          meta.deviceId,
+          meta.occurredAt,
         ]
       );
       createdEntry = result.rows[0];
 
-      if (assistRow) {
-        await client.query(
-          `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, related_log_id)
-           VALUES ($1, $2, $3, 'assist', false, 1, $4, NULL, $5, $6)`,
-          [fixture.event_id, fixture.id, Number(assist_athlete_id), minute ?? null, userId, createdEntry.id]
+      // The lineup swap happens in the SAME transaction as its log entry
+      // (see applySubstitutionInTx), after the insert: a duplicate replay
+      // fails the insert on client_id first and never touches the lineup.
+      if (isSubstitutionSwap) {
+        substitutionError = await applySubstitutionInTx(
+          client, { fixtureId: fixture.id }, Number(athlete_id), Number(substitute_athlete_id)
         );
       }
-      await client.query('COMMIT');
+
+      if (substitutionError) {
+        await client.query('ROLLBACK');
+      } else if (assistRow) {
+        await client.query(
+          `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, related_log_id, device_id, occurred_at)
+           VALUES ($1, $2, $3, 'assist', false, 1, $4, NULL, $5, $6, $7, $8)`,
+          [fixture.event_id, fixture.id, Number(assist_athlete_id), minute ?? null, userId, createdEntry.id, meta.deviceId, meta.occurredAt]
+        );
+      }
+      if (!substitutionError) await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
       // Two replays of the same queued log can race; the unique index makes
@@ -573,17 +574,21 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       client.release();
     }
 
+    if (substitutionError) {
+      return res.status(400).json({ error: substitutionError });
+    }
     res.status(201).json(createdEntry);
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error creating fixture log entry:', err);
-    res.status(500).json({ error: 'Server error', detail: err.message });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// PATCH /api/fixtures/:id/logs/:logId
+// PATCH /api/fixtures/:id/logs/:logId — edit a live log entry. Staff only.
+// Conflict codes mirror the event route (T8): unknown entry 404, deleted 410.
 router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
@@ -598,31 +603,22 @@ router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Only the home team can edit logs' });
     }
 
-    const check = await pool.query(
-      `SELECT id FROM log_entries
-       WHERE id = $1 AND fixture_id = $2 AND deleted_at IS NULL`,
+    const found = await pool.query(
+      'SELECT * FROM log_entries WHERE id = $1 AND fixture_id = $2',
       [req.params.logId, req.params.id]
     );
-    if (check.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized to edit this log entry' });
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Log entry not found' });
+    }
+    if (found.rows[0].deleted_at) {
+      return res.status(410).json({ error: 'Log entry has been deleted' });
     }
 
-    const { athlete_id, action_type, is_scoring, value, minute, notes } = req.body;
-
-    const result = await pool.query(
-      `UPDATE log_entries
-       SET athlete_id = COALESCE($1, athlete_id),
-           action_type = COALESCE($2, action_type),
-           is_scoring = COALESCE($3, is_scoring),
-           value = COALESCE($4, value),
-           minute = COALESCE($5, minute),
-           notes = COALESCE($6, notes),
-           updated_at = now()
-       WHERE id = $7 RETURNING *`,
-      [athlete_id, action_type, is_scoring, value, minute, notes, req.params.logId]
-    );
-
-    res.json(result.rows[0]);
+    const outcome = await applyLogEdit(pool, { row: found.rows[0], body: req.body, squadId });
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
+    }
+    res.status(outcome.status).json(outcome.entry);
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });

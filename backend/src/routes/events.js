@@ -8,14 +8,16 @@ const {
   validateLineupPayload,
   saveLineup,
   lineupCheckForLog,
-  applySubstitution,
+  applySubstitutionInTx,
 } = require('../lib/lineups');
 const { ensureRatings, squadFromRows, ratingsPayload } = require('../lib/ratings');
+const { buildLineupSuggestions } = require('../lib/lineupSuggestions');
 const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
-const { buildMatchSummary } = require('../lib/summary');
-const { buildCsv, buildPdf } = require('../lib/reports');
+const { parseLogMeta } = require('../lib/logMeta');
+const { applyLogEdit } = require('../lib/logEdit');
+
 const router = express.Router();
 
 const LEAGUE_FORMATS = new Set(['league', 'tournament']);
@@ -60,7 +62,7 @@ async function getFixtureLogs(pool, fixtureId) {
      FROM log_entries l
      LEFT JOIN athletes a ON a.id = l.athlete_id
      WHERE l.fixture_id = $1 AND l.deleted_at IS NULL
-     ORDER BY l.minute NULLS LAST, l.logged_at`,
+     ORDER BY l.minute NULLS LAST, COALESCE(l.occurred_at, l.logged_at) ASC, l.id ASC`,
     [fixtureId]
   );
   return result.rows;
@@ -359,7 +361,6 @@ router.post('/', requireAuth(), async (req, res) => {
       duration_minutes,
       format,
       required_teams,
-      season_id,
     } = req.body;
 
     if (!event_date) {
@@ -423,22 +424,9 @@ router.post('/', requireAuth(), async (req, res) => {
       }
     }
 
-    // Optional season tag (T17) — must belong to this squad.
-    let validSeasonId = null;
-    if (season_id) {
-      const seasonCheck = await pool.query(
-        'SELECT id FROM seasons WHERE id = $1 AND squad_id = $2',
-        [season_id, squadId]
-      );
-      if (seasonCheck.rows.length === 0) {
-        return res.status(400).json({ error: 'Unknown season for this squad' });
-      }
-      validSeasonId = season_id;
-    }
-
     const result = await pool.query(
-      `INSERT INTO events (squad_id, title, opponent, event_type, format, required_teams, season_id, event_date, location, location_lat, location_lng, duration_minutes, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      `INSERT INTO events (squad_id, title, opponent, event_type, format, required_teams, event_date, location, location_lat, location_lng, duration_minutes, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
         squadId,
         title ? title.trim() : null,
@@ -446,7 +434,6 @@ router.post('/', requireAuth(), async (req, res) => {
         type || event_type || 'match',
         eventFormat,
         isLeague ? Number(required_teams) : null,
-        validSeasonId,
         timestamp,
         location ? location.trim() : null,
         toCoord(location_lat),
@@ -511,177 +498,6 @@ router.get('/clashes', requireAuth(), async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// T22: Auto post-match summary & highlights
-// ---------------------------------------------------------------------------
-router.get('/:id/summary', requireAuth(), async (req, res) => {
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
-
-    const event = await loadEventWithAccess(pool, req.params.id, squadId);
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-
-    if (LEAGUE_FORMATS.has(event.format)) {
-      return res.status(400).json({ error: 'Use /api/fixtures/:id/summary for league fixtures' });
-    }
-
-    const logsResult = await pool.query(
-      `SELECT l.*, a.name AS athlete_name
-       FROM log_entries l
-       LEFT JOIN athletes a ON a.id = l.athlete_id
-       WHERE l.event_id = $1 AND l.deleted_at IS NULL
-       ORDER BY l.minute NULLS LAST, l.logged_at`,
-      [event.id]
-    );
-    const logs = logsResult.rows.map((l) => ({ ...l, side: l.athlete_id != null ? 'us' : 'them' }));
-
-    const gf = logs
-      .filter((l) => l.is_scoring && l.side === 'us')
-      .reduce((sum, l) => sum + l.value, 0);
-    const ga = logs
-      .filter((l) => l.is_scoring && l.side === 'them')
-      .reduce((sum, l) => sum + l.value, 0);
-
-    const summary = buildMatchSummary(logs, {
-      squadName: 'Squad',
-      opponent: event.opponent || 'the opposition',
-      gf,
-      ga,
-    });
-
-    res.json({ event_id: event.id, status: event.status, ...summary });
-  } catch (err) {
-    console.error('Error building event summary:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// T20: Match report exports (CSV / PDF)
-// ---------------------------------------------------------------------------
-
-function matchReportRows(event, gf, ga, timeline) {
-  const rows = [
-    ['Match Report'],
-    ['Opponent', event.opponent || 'Training session'],
-    ['Date', event.event_date ? new Date(event.event_date).toISOString() : ''],
-    ['Location', event.location || ''],
-    ['Status', event.status],
-    ['Final Score', `${gf}-${ga}`],
-    [],
-    ['Minute', 'Action', 'Athlete', 'Side', 'Value', 'Notes'],
-  ];
-  for (const l of timeline) {
-    rows.push([
-      l.minute ?? '',
-      l.action_type,
-      l.athlete_name || (l.side === 'us' ? 'Squad' : 'Opponent'),
-      l.side,
-      l.value,
-      l.notes || '',
-    ]);
-  }
-  return rows;
-}
-
-async function loadMatchReportData(pool, eventId, squadId) {
-  const event = await loadEventWithAccess(pool, eventId, squadId);
-  if (!event || LEAGUE_FORMATS.has(event.format)) return null;
-
-  const logsResult = await pool.query(
-    `SELECT l.*, a.name AS athlete_name
-     FROM log_entries l
-     LEFT JOIN athletes a ON a.id = l.athlete_id
-     WHERE l.event_id = $1 AND l.deleted_at IS NULL
-     ORDER BY l.minute NULLS LAST, l.logged_at`,
-    [event.id]
-  );
-  const logs = logsResult.rows.map((l) => ({ ...l, side: l.athlete_id != null ? 'us' : 'them' }));
-
-  const gf = logs
-    .filter((l) => l.is_scoring && l.side === 'us')
-    .reduce((sum, l) => sum + l.value, 0);
-  const ga = logs
-    .filter((l) => l.is_scoring && l.side === 'them')
-    .reduce((sum, l) => sum + l.value, 0);
-
-  return { event, logs, gf, ga };
-}
-
-router.get('/:id/report.csv', requireAuth(), async (req, res) => {
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
-
-    const data = await loadMatchReportData(pool, req.params.id, squadId);
-    if (!data) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-
-    const csv = buildCsv(matchReportRows(data.event, data.gf, data.ga, data.logs));
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="match-${data.event.id}-report.csv"`);
-    res.send(csv);
-  } catch (err) {
-    console.error('Error exporting match CSV:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-router.get('/:id/report.pdf', requireAuth(), async (req, res) => {
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
-
-    const data = await loadMatchReportData(pool, req.params.id, squadId);
-    if (!data) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-
-    const summary = buildMatchSummary(data.logs, {
-      squadName: 'Squad',
-      opponent: data.event.opponent || 'the opposition',
-      gf: data.gf,
-      ga: data.ga,
-    });
-
-    const lines = [
-      { text: 'Match Report', size: 18, bold: true, gapAfter: 22 },
-      {
-        text: `${data.event.opponent || 'Training session'} · ${
-          data.event.event_date ? new Date(data.event.event_date).toISOString().slice(0, 16).replace('T', ' ') : ''
-        }`,
-        size: 10,
-        gapAfter: 16,
-      },
-      { text: summary.headline, size: 14, bold: true, gapAfter: 16 },
-      { text: summary.narrative, size: 10, gapAfter: 18 },
-      { text: 'Timeline', size: 13, bold: true, gapAfter: 14 },
-    ];
-    if (data.logs.length === 0) {
-      lines.push({ text: 'No actions recorded.', size: 10, gapAfter: 12 });
-    }
-    for (const l of data.logs) {
-      lines.push({
-        text: `${l.minute != null ? `${l.minute}'` : '—'}  ${l.action_type}  ${l.athlete_name || (l.side === 'us' ? 'Squad' : 'Opponent')}${l.notes ? ` — ${l.notes}` : ''}`,
-        size: 10,
-        gapAfter: 13,
-      });
-    }
-
-    const pdf = buildPdf(lines);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="match-${data.event.id}-report.pdf"`);
-    res.send(pdf);
-  } catch (err) {
-    console.error('Error exporting match PDF:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
 // GET /api/events/:id — event detail: aggregated result + full timeline (US15)
 router.get('/:id', requireAuth(), async (req, res) => {
   try {
@@ -721,7 +537,7 @@ router.get('/:id', requireAuth(), async (req, res) => {
        FROM log_entries l
        LEFT JOIN athletes a ON a.id = l.athlete_id
        WHERE l.event_id = $1 AND l.deleted_at IS NULL
-       ORDER BY l.minute NULLS LAST, l.logged_at`,
+       ORDER BY l.minute NULLS LAST, COALESCE(l.occurred_at, l.logged_at) ASC, l.id ASC`,
       [req.params.id]
     );
     const timeline = timelineResult.rows;
@@ -767,26 +583,8 @@ router.patch('/:id', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this event' });
     }
 
-    const { title, opponent, event_type, type, event_date, event_time, location, status, duration_minutes, season_id, location_lat, location_lng } = req.body;
+    const { title, opponent, event_type, type, event_date, event_time, location, status, duration_minutes, location_lat, location_lng } = req.body;
     const timestamp = event_date ? (event_time ? `${event_date}T${event_time}` : event_date) : null;
-
-    // Season tag changes are validated (must belong to this squad); passing
-    // season_id: null clears the tag, omitting it leaves it untouched.
-    let newSeasonId = null;
-    let seasonProvided = false;
-    if (season_id !== undefined) {
-      seasonProvided = true;
-      if (season_id !== null) {
-        const seasonCheck = await pool.query(
-          'SELECT id FROM seasons WHERE id = $1 AND squad_id = $2',
-          [season_id, squadId]
-        );
-        if (seasonCheck.rows.length === 0) {
-          return res.status(400).json({ error: 'Unknown season for this squad' });
-        }
-        newSeasonId = season_id;
-      }
-    }
 
     // Validate date if provided - don't allow past dates or dates too far in future
     if (timestamp) {
@@ -819,22 +617,28 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     const hasCoords = Object.prototype.hasOwnProperty.call(req.body, 'location_lat')
       || Object.prototype.hasOwnProperty.call(req.body, 'location_lng');
 
+    // The same contract applies to the clearable text fields: the edit form
+    // sends an explicit null when a coach deletes the location text or the
+    // opponent/title name. COALESCE can't tell that apart from "field not
+    // sent" (it keeps the stored value for both), so the fields behind a
+    // has-flag are set — to null when null — and the rest keep their value.
+    const hasField = (field) => Object.prototype.hasOwnProperty.call(req.body, field);
+
     const result = await pool.query(
       `UPDATE events
-       SET title = COALESCE($1, title),
-           opponent = COALESCE($2, opponent),
-           event_type = COALESCE($3, event_type),
-           event_date = COALESCE($4, event_date),
-           location = COALESCE($5, location),
-           status = COALESCE($6, status),
-           duration_minutes = COALESCE($7, duration_minutes),
-           location_lat = CASE WHEN $8 THEN $9::double precision ELSE location_lat END,
-           location_lng = CASE WHEN $8 THEN $10::double precision ELSE location_lng END,
-           season_id = CASE WHEN $11 THEN $12 ELSE season_id END,
-           started_at = CASE WHEN $6 = 'live' THEN COALESCE(started_at, now()) ELSE started_at END,
+       SET title = CASE WHEN $1 THEN $2::text ELSE title END,
+           opponent = CASE WHEN $3 THEN $4::text ELSE opponent END,
+           event_type = COALESCE($5, event_type),
+           event_date = COALESCE($6, event_date),
+           location = CASE WHEN $7 THEN $8::text ELSE location END,
+           status = COALESCE($9, status),
+           duration_minutes = COALESCE($10, duration_minutes),
+           location_lat = CASE WHEN $12 THEN $13::double precision ELSE location_lat END,
+           location_lng = CASE WHEN $12 THEN $14::double precision ELSE location_lng END,
+           started_at = CASE WHEN $9 = 'live' THEN COALESCE(started_at, now()) ELSE started_at END,
            updated_at = now()
-       WHERE id = $13 RETURNING *`,
-      [title, opponent, type || event_type || null, timestamp, location, status, duration_minutes ? Number(duration_minutes) : null, hasCoords, toCoord(location_lat), toCoord(location_lng), seasonProvided, newSeasonId, req.params.id]
+       WHERE id = $11 RETURNING *`,
+      [hasField('title'), title, hasField('opponent'), opponent, type || event_type || null, timestamp, hasField('location'), location, status, duration_minutes ? Number(duration_minutes) : null, req.params.id, hasCoords, toCoord(location_lat), toCoord(location_lng)]
     );
 
     const updated = result.rows[0];
@@ -1143,6 +947,34 @@ router.put('/:id/lineup', requireAuth(), async (req, res) => {
   }
 });
 
+// GET /api/events/:id/lineup/suggestions — a suggested starting XI and bench
+// for the coach's own side, built from RSVPs, current injuries, recent goal
+// involvement and the overall ratings the simulator maintains. Read-only:
+// nothing is saved until the wizard PUTs the lineup. Staff only.
+router.get('/:id/lineup/suggestions', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+
+    const event = await loadEventWithAccess(pool, req.params.id, squadId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (LEAGUE_FORMATS.has(event.format)) {
+      return res.status(400).json({ error: 'Use the fixture lineup suggestions for league events' });
+    }
+
+    const suggestions = await buildLineupSuggestions(pool, { eventId: event.id, squadId });
+    res.json(suggestions);
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Error building lineup suggestions:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/events/:id/simulate — build a full 90-minute script for a simple
 // event from the saved lineup plus each player's rating. The opponent is a
 // free-text name with no roster, so it is simulated as a generic side of a
@@ -1245,7 +1077,7 @@ router.get('/:id/logs', requireAuth(), async (req, res) => {
        FROM log_entries l
        LEFT JOIN athletes a ON a.id = l.athlete_id
        WHERE l.event_id = $1 AND l.fixture_id IS NULL AND l.deleted_at IS NULL
-       ORDER BY l.minute NULLS LAST, l.logged_at`,
+       ORDER BY l.minute NULLS LAST, COALESCE(l.occurred_at, l.logged_at) ASC, l.id ASC`,
       [req.params.id]
     );
 
@@ -1288,6 +1120,14 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       if (existing.rows.length > 0) {
         return res.status(200).json(existing.rows[0]);
       }
+    }
+
+    // T5/T9: device_id and occurred_at travel with offline-queued logs — the
+    // timeline orders by occurred_at (falling back to logged_at) so a replay
+    // that arrives late still slots in where it happened.
+    const meta = parseLogMeta(req.body);
+    if (meta.error) {
+      return res.status(400).json({ error: meta.error });
     }
 
     if (event.status === 'cancelled') {
@@ -1366,14 +1206,6 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       }
     }
 
-    if (isSubstitutionSwap) {
-      const substitutionError = await applySubstitution(
-        pool, { eventId: event.id }, Number(athlete_id), Number(substitute_athlete_id)
-      );
-      if (substitutionError) {
-        return res.status(400).json({ error: substitutionError });
-      }
-    }
 
     // A goal may carry its assist in the same request; the assist becomes a
     // linked log entry so stats and the timeline stay consistent.
@@ -1406,11 +1238,12 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
 
     const client = await pool.connect();
     let createdEntry;
+    let substitutionError = null;
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        `INSERT INTO log_entries (event_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, client_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        `INSERT INTO log_entries (event_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, client_id, device_id, occurred_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [
           req.params.id,
           athlete_id || null,
@@ -1421,18 +1254,31 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
           entryNotes,
           userId,
           clientId,
+          meta.deviceId,
+          meta.occurredAt,
         ]
       );
       createdEntry = result.rows[0];
 
-      if (assistRow) {
-        await client.query(
-          `INSERT INTO log_entries (event_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, related_log_id)
-           VALUES ($1, $2, 'assist', false, 1, $3, NULL, $4, $5)`,
-          [req.params.id, Number(assist_athlete_id), minute ?? null, userId, createdEntry.id]
+      // The lineup swap happens in the SAME transaction as its log entry
+      // (see applySubstitutionInTx), after the insert: a duplicate replay
+      // fails the insert on client_id first and never touches the lineup.
+      if (isSubstitutionSwap) {
+        substitutionError = await applySubstitutionInTx(
+          client, { eventId: event.id }, Number(athlete_id), Number(substitute_athlete_id)
         );
       }
-      await client.query('COMMIT');
+
+      if (substitutionError) {
+        await client.query('ROLLBACK');
+      } else if (assistRow) {
+        await client.query(
+          `INSERT INTO log_entries (event_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, related_log_id, device_id, occurred_at)
+           VALUES ($1, $2, 'assist', false, 1, $3, NULL, $4, $5, $6, $7)`,
+          [req.params.id, Number(assist_athlete_id), minute ?? null, userId, createdEntry.id, meta.deviceId, meta.occurredAt]
+        );
+      }
+      if (!substitutionError) await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
       // Two replays of the same queued log can race; the unique index makes
@@ -1451,49 +1297,49 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       client.release();
     }
 
+    if (substitutionError) {
+      return res.status(400).json({ error: substitutionError });
+    }
     res.status(201).json(createdEntry);
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error creating log entry:', err);
-    res.status(500).json({ error: 'Server error', detail: err.message });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PATCH /api/events/:id/logs/:logId — edit a log entry just made (US14).
-// Staff only.
+// Staff only. Conflict codes (T8): a missing or foreign entry is 404, an
+// entry deleted since the client last saw it is 410 Gone. Editing is
+// present-flag based and stamps edited_at — see lib/logEdit.js.
 router.patch('/:id/logs/:logId', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
     const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
-    const check = await pool.query(
-      `SELECT l.id FROM log_entries l
-       JOIN events e ON e.id = l.event_id
-       WHERE l.id = $1 AND l.event_id = $2 AND e.squad_id = $3 AND l.deleted_at IS NULL AND l.fixture_id IS NULL`,
-      [req.params.logId, req.params.id, squadId]
-    );
-    if (check.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized to edit this log entry' });
+    const event = await pool.query('SELECT id, squad_id FROM events WHERE id = $1', [req.params.id]);
+    if (event.rows.length === 0 || event.rows[0].squad_id !== squadId) {
+      return res.status(404).json({ error: 'Event not found' });
     }
 
-    const { athlete_id, action_type, is_scoring, value, minute, notes } = req.body;
-
-    const result = await pool.query(
-      `UPDATE log_entries
-       SET athlete_id = COALESCE($1, athlete_id),
-           action_type = COALESCE($2, action_type),
-           is_scoring = COALESCE($3, is_scoring),
-           value = COALESCE($4, value),
-           minute = COALESCE($5, minute),
-           notes = COALESCE($6, notes),
-           updated_at = now()
-       WHERE id = $7 RETURNING *`,
-      [athlete_id, action_type, is_scoring, value, minute, notes, req.params.logId]
+    const found = await pool.query(
+      'SELECT * FROM log_entries WHERE id = $1 AND event_id = $2 AND fixture_id IS NULL',
+      [req.params.logId, req.params.id]
     );
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Log entry not found' });
+    }
+    if (found.rows[0].deleted_at) {
+      return res.status(410).json({ error: 'Log entry has been deleted' });
+    }
 
-    res.json(result.rows[0]);
+    const outcome = await applyLogEdit(pool, { row: found.rows[0], body: req.body, squadId });
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
+    }
+    res.status(outcome.status).json(outcome.entry);
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });
@@ -1626,6 +1472,9 @@ router.put('/:id/rsvps/mine', requireAuth(), async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('Error setting RSVP:', err.message);
     res.status(500).json({ error: 'Server error' });
   }

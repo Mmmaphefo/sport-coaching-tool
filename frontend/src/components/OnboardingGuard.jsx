@@ -1,7 +1,7 @@
 // AI assistance: drafted with Claude (Sonnet 5) via claude.ai; reviewed and tested by the project team.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { apiRequest } from '../lib/api'
 
 // Outer shell: remounts the guard (and thus re-fetches the squad) whenever
@@ -18,46 +18,141 @@ function OnboardingGuard({ children }) {
   return <GuardCheck key={location.pathname}>{children}</GuardCheck>
 }
 
+const boxStyle = {
+  padding: '2rem',
+  textAlign: 'center',
+  maxWidth: '32rem',
+  margin: '3rem auto',
+}
+
 function GuardCheck({ children }) {
-  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { getToken, isLoaded, isSignedIn, signOut } = useAuth()
   const location = useLocation()
   const [squad, setSquad] = useState(null)
+  const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [initialLoadDone, setInitialLoadDone] = useState(false)
-  const [error, setError] = useState('')
+  const [slow, setSlow] = useState(false)
+  const [error, setError] = useState(null)
+  const [attempt, setAttempt] = useState(0)
+
+  const retry = useCallback(() => {
+    setError(null)
+    setLoading(true)
+    setAttempt((n) => n + 1)
+  }, [])
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return
+    if (!isLoaded || !isSignedIn) return undefined
 
-    async function loadSquad() {
+    let cancelled = false
+    // The API sleeps when idle on the free hosting tier; tell the user why
+    // the first load is slow instead of showing a bare "Loading...".
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setSlow(true)
+    }, 4000)
+
+    async function load() {
       try {
-        const data = await apiRequest('/api/squads/mine', { getToken })
-        setSquad(data)
+        // Role first: only the head coach owns onboarding. Assistants and
+        // players must never be sent to /setup (every write there is
+        // coach-only and would 403, trapping them).
+        const me = await apiRequest('/api/account/me', { getToken })
+        if (cancelled) return
+        setRole(me?.role || 'coach')
+
+        try {
+          const data = await apiRequest('/api/squads/mine', { getToken })
+          if (!cancelled) setSquad(data)
+        } catch (err) {
+          if (cancelled) return
+          // 404 means no squad exists yet (new coach) — allow setup to proceed
+          if (err.status === 404) {
+            setSquad({ onboarded: false })
+          } else {
+            throw err
+          }
+        }
       } catch (err) {
-        setError(err.message)
+        if (!cancelled) setError(err)
       } finally {
-        setLoading(false)
-        setInitialLoadDone(true)
+        clearTimeout(slowTimer)
+        if (!cancelled) {
+          setSlow(false)
+          setLoading(false)
+        }
       }
     }
 
-    loadSquad()
-  }, [isLoaded, isSignedIn, getToken])
+    load()
+    return () => {
+      cancelled = true
+      clearTimeout(slowTimer)
+    }
+  }, [isLoaded, isSignedIn, getToken, attempt])
 
-  if (!isLoaded || (loading && !initialLoadDone)) {
-    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>
+  if (!isLoaded) {
+    return <div style={boxStyle}>Loading...</div>
   }
 
+  // Checked before the loading state: a signed-out visitor never triggers the
+  // fetch, so waiting on it would leave them on "Loading..." forever.
   if (!isSignedIn) {
     return <Navigate to="/" replace />
   }
 
+  if (loading) {
+    return (
+      <div style={boxStyle} role="status" aria-live="polite">
+        <p>Loading...</p>
+        {slow && (
+          <p style={{ opacity: 0.75, fontSize: '0.9rem' }}>
+            Waking up the server — this can take up to a minute after a quiet period.
+          </p>
+        )}
+      </div>
+    )
+  }
+
   if (error) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'red' }}>{error}</div>
+    // A non-coach account that hasn't accepted an invite yet.
+    const unlinked = error.status === 403
+    // The server rejected the sign-in even after a fresh token was minted
+    // (see api.js), so retrying can't help — a clean sign-in will.
+    const signedOutServerSide = error.status === 401
+    return (
+      <div style={boxStyle} role="alert">
+        <h2 style={{ marginBottom: '0.75rem' }}>
+          {unlinked ? 'Your account isn’t linked to a squad yet' : 'We couldn’t load your squad'}
+        </h2>
+        <p style={{ marginBottom: '1.25rem' }}>
+          {unlinked
+            ? 'Ask your coach for an invite link, then paste it on the role selection page to join their squad.'
+            : error.message}
+        </p>
+        {unlinked ? (
+          <Link to="/role-select" className="btn btn-gold">
+            Enter invite link
+          </Link>
+        ) : signedOutServerSide ? (
+          <button
+            type="button"
+            className="btn btn-gold"
+            onClick={() => signOut({ redirectUrl: '/sign-in' })}
+          >
+            Sign in again
+          </button>
+        ) : (
+          <button type="button" className="btn btn-gold" onClick={retry}>
+            Try again
+          </button>
+        )}
+      </div>
+    )
   }
 
   const onSetupPage = location.pathname === '/setup'
-  const needsSetup = squad && squad.onboarded === false
+  const isCoach = role === 'coach'
+  const needsSetup = isCoach && squad && squad.onboarded === false
 
   if (needsSetup && !onSetupPage) {
     return <Navigate to="/setup" replace />

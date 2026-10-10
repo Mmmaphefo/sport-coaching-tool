@@ -1,89 +1,216 @@
-.friendlies-hint {
-  color: #666;
-  font-size: 0.9rem;
-  max-width: 62ch;
-}
+/* Friendlies page (T24) — incoming proposals, the full list with statuses,
+   and the propose form against the public squad directory. */
 
-.friendlies-success {
-  margin-bottom: 1rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid #b5d9b8;
-  background: #eef7ef;
-  color: #1d7a34;
-  border-radius: 8px;
-}
-
-.friendlies-list {
+.fr-page {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  max-width: 760px;
+  gap: 1.25rem;
 }
 
-.friendlies-card {
+.fr-head h1 {
+  font-family: var(--font-display);
+  margin: 0 0 0.25rem;
+}
+
+.fr-head p {
+  margin: 0;
+  color: var(--color-ink-soft);
+}
+
+.fr-card {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-chalk);
+  padding: 1.25rem;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
   gap: 1rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid #eee;
-  border-radius: 10px;
-  background: #fff;
-  flex-wrap: wrap;
 }
 
-.friendlies-card--accepted {
-  border-color: #b5d9b8;
+.fr-card h2 {
+  font-family: var(--font-display);
+  margin: 0;
 }
 
-.friendlies-card--declined,
-.friendlies-card--cancelled {
-  opacity: 0.65;
+.fr-muted {
+  margin: 0;
+  color: var(--color-ink-soft);
 }
 
-.friendlies-card-main {
+.fr-error {
+  border: 1px solid #b33b3b;
+  border-radius: var(--radius-sm);
+  background: #fbeaea;
+  color: #7a2020;
+  padding: 0.6rem 0.8rem;
+}
+
+/* --- incoming proposals -------------------------------------------------- */
+
+.fr-in-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 220px;
-}
-
-.friendlies-direction {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #888;
-}
-
-.friendlies-opponent {
-  font-weight: 600;
-  font-size: 1.05rem;
-}
-
-.friendlies-meta {
-  font-size: 0.85rem;
-  color: #666;
-}
-
-.friendlies-message {
-  font-size: 0.85rem;
-  color: #777;
-  font-style: italic;
-}
-
-.friendlies-card-side {
-  display: flex;
-  align-items: center;
   gap: 0.75rem;
-  flex-wrap: wrap;
 }
 
-.friendlies-actions {
+.fr-in-item {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
 }
 
-.friendlies-error {
-  flex-basis: 100%;
+.fr-in-who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: baseline;
+}
+
+.fr-in-squad,
+.fr-in-when {
+  font-weight: 600;
+}
+
+.fr-in-where {
+  color: var(--color-ink-soft);
+  font-size: 0.9rem;
+}
+
+.fr-in-msg {
   margin: 0;
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.fr-in-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+/* --- all friendlies table ------------------------------------------------ */
+
+.fr-table-wrap {
+  overflow-x: auto;
+}
+
+.fr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.fr-table th,
+.fr-table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-line);
+  vertical-align: middle;
+}
+
+.fr-table thead th {
+  color: var(--color-ink-soft);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fr-table tbody tr:last-child th,
+.fr-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.fr-side {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--color-ink-soft);
+}
+
+.fr-status {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-soft);
+}
+
+.fr-status-proposed { color: #4a5f8a; border-color: #4a5f8a; }
+.fr-status-accepted { color: #1c7a3c; border-color: #1c7a3c; }
+.fr-status-declined { color: #b33b3b; border-color: #b33b3b; }
+.fr-status-cancelled { color: var(--color-ink-soft); }
+
+.fr-reason {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.fr-row-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.fr-row-actions .btn {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+/* --- propose form -------------------------------------------------------- */
+
+.fr-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.9rem;
+  align-items: end;
+}
+
+.fr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+}
+
+.fr-field-wide {
+  grid-column: 1 / -1;
+}
+
+.fr-field input,
+.fr-field select,
+.fr-field textarea {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-chalk);
+  color: inherit;
+}
+
+.fr-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.6rem;
+}
+
+@media print {
+  .fr-form,
+  .fr-form-actions,
+  .fr-row-actions,
+  .fr-in-actions {
+    display: none;
+  }
 }

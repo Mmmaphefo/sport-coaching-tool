@@ -1,8 +1,7 @@
 // AI assistance: drafted with Claude (Sonnet 5) via claude.ai; reviewed and tested by the project team.
 const { clerkClient } = require('@clerk/express');
-const { Resend } = require('resend');
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+// Sends through lib/email, which picks Brevo or Resend from the environment.
+const { sendEmail, emailConfigured } = require('./email');
 
 const HOURS_BEFORE = 24;
 
@@ -47,9 +46,9 @@ async function sendEventReminders(pool) {
         continue;
       }
 
-      if (!resend) {
+      if (!emailConfigured()) {
         console.warn(
-          `RESEND_API_KEY not set — reminder email skipped for event ${event.id}. Coach: ${to}`
+          `No email provider configured — reminder email skipped for event ${event.id}. Coach: ${to}`
         );
         // In tests we still mark the reminder as sent so the scheduling logic
         // is exercisable without a real email provider.
@@ -63,8 +62,7 @@ async function sendEventReminders(pool) {
         const eventDate = new Date(event.event_date).toLocaleString();
         const eventTitle = event.title || event.opponent || 'Upcoming event';
 
-        const { error } = await resend.emails.send({
-          from: process.env.EMAIL_FROM || 'KickStat <reminders@resend.dev>',
+        const { sent, error } = await sendEmail({
           to,
           subject: `Reminder: ${eventTitle} is coming up`,
           html: `
@@ -75,12 +73,10 @@ async function sendEventReminders(pool) {
           `,
         });
 
-        if (error) {
-          // Resend returns API-level rejections (unverified/sandbox sender
-          // domain, invalid recipient, etc.) as `{ error }` in the response
-          // rather than throwing — without this check, a rejected send fell
-          // through to the success branch below and was marked as sent.
-          console.error(`Resend rejected the reminder for event ${event.id}:`, error.message || error);
+        if (!sent) {
+          // A rejected or failed send is left unmarked so the next sweep
+          // retries it, instead of being recorded as delivered.
+          console.error(`The reminder for event ${event.id} was not sent:`, error);
           continue;
         }
 

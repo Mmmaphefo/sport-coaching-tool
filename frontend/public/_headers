@@ -1,0 +1,9 @@
+# The service worker script and the manifest must always be revalidated at
+# the edge: the browser's byte-diff of sw.js is what rolls users onto a new
+# deploy's worker, and a CDN-cached copy would keep them pinned to the old
+# one. Everything else is content-hashed and safe to cache hard.
+/sw.js
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache

@@ -54,6 +54,17 @@ const summaryPayload = {
   nextEvent: null,
 }
 
+// GET /api/dashboard/trends payload: the squad's completed matches, oldest
+// first, with the season summary that drives the record row.
+const trendsPayload = {
+  matches: [
+    { kind: 'match', id: 11, date: '2026-10-01T00:00:00.000Z', opponent: 'Riverside FC', competition: null, goalsFor: 2, goalsAgainst: 1, result: 'W' },
+    { kind: 'fixture', id: 3, date: '2026-10-05T00:00:00.000Z', opponent: 'Rival United', competition: 'Trend League', goalsFor: 2, goalsAgainst: 0, result: 'W' },
+    { kind: 'match', id: 12, date: '2026-10-08T00:00:00.000Z', opponent: 'Marlow Athletic', competition: null, goalsFor: 0, goalsAgainst: 3, result: 'L' },
+  ],
+  summary: { played: 3, wins: 2, draws: 0, losses: 1, goalsFor: 4, goalsAgainst: 4, points: 6 },
+}
+
 // One payload shape from GET /api/athletes/:id/stats, used by the player-view
 // tests. Log dates are relative to "now" so the default 7D period includes
 // them regardless of when the suite runs.
@@ -184,6 +195,37 @@ describe('Dashboard', () => {
     expect(screen.getByText(/invite\/abc123/)).toBeInTheDocument()
   })
 
+  it('shows the provider reason when the invite email is rejected', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/dashboard/summary')) return Promise.resolve(summaryPayload)
+      if (path === '/api/invites') {
+        return Promise.resolve({
+          inviteId: 10,
+          inviteLink: 'http://localhost:5173/invite/def456',
+          emailSent: false,
+          emailError: 'You can only send testing emails to your own email address',
+        })
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Invite an Assistant/i })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText(/assistant@example.com/i), {
+      target: { value: 'coach2@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Send invite/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not be delivered/i)).toBeInTheDocument()
+      expect(screen.getByText(/testing emails to your own email address/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/invite\/def456/)).toBeInTheDocument()
+  })
+
   it('shows the server message when an invite already exists', async () => {
     mocks.apiRequest.mockImplementation((path) => {
       if (path.startsWith('/api/dashboard/summary')) return Promise.resolve(summaryPayload)
@@ -311,6 +353,53 @@ describe('Dashboard', () => {
       expect(screen.getByText('MATCH PAGE')).toBeInTheDocument()
     })
   })
+
+  it('renders the season-form panel from the trends endpoint', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/dashboard/summary')) return Promise.resolve(summaryPayload)
+      if (path.startsWith('/api/dashboard/trends')) return Promise.resolve(trendsPayload)
+      if (path === '/api/account/me') return Promise.resolve({ role: 'coach', athleteId: null })
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Match results' })).toBeInTheDocument()
+    })
+    // One result dot per completed match, lettered W/D/L.
+    expect(screen.getAllByText('W')).toHaveLength(2)
+    expect(screen.getByText('L')).toBeInTheDocument()
+    // Goals-for bar heights scale to the busiest scoreline in the run.
+    const winBar = screen.getByTitle('vs Riverside FC — 2 for, 1 against')
+    const lossBar = screen.getByTitle('vs Marlow Athletic — 0 for, 3 against')
+    expect(winBar).toBeInTheDocument()
+    expect(lossBar).toBeInTheDocument()
+    // Season record row from the trends summary — the numbers render bold
+    // inside the spans, so match the row as a whole instead of the split
+    // text nodes.
+    const recordRow = screen.getByText((_, el) => el.classList.contains('dash-trend-record'))
+    expect(recordRow).toHaveTextContent(/3\s*played/)
+    expect(recordRow).toHaveTextContent(/6\s*pts/)
+    expect(screen.getByText(/Tap a result to open the match report/i)).toBeInTheDocument()
+  }, 10000)
+
+  it('keeps the dashboard working when the trends endpoint fails', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/dashboard/summary')) return Promise.resolve(summaryPayload)
+      if (path.startsWith('/api/dashboard/trends')) return Promise.reject(new Error('trends down'))
+      if (path === '/api/account/me') return Promise.resolve({ role: 'coach', athleteId: null })
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /The full squad picture/i })).toBeInTheDocument()
+    })
+    expect(screen.getByText(/No completed matches yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/Squad readiness/i)).toBeInTheDocument()
+  }, 10000)
 
   it('keeps the live score for athletes but hides the match centre link', async () => {
     mockPlayerApi({

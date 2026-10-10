@@ -428,3 +428,97 @@ describe('Roster', () => {
     })
   })
 })
+
+// AI assistance: the form tests below were drafted with Claude (Opus 5.5) via
+// claude.ai; reviewed and tested by the project team.
+describe('Roster add/edit form', () => {
+  const squad = [
+    { id: 1, name: 'Alex Morgan', position: 'Forward', squad_number: 13, photo: 'data:image/png;base64,AAA' },
+    { id: 2, name: 'Casey Keller', position: 'Goalkeeper', squad_number: 1 },
+  ]
+  let writes
+  function setup({ fail } = {}) {
+    writes = []
+    mocks.getToken.mockResolvedValue('test-token')
+    mocks.apiRequest.mockReset()
+    mocks.apiRequest.mockImplementation(async (path, opts = {}) => {
+      if (opts.method) {
+        writes.push([opts.method, path, opts.body])
+        if (fail) throw new Error(fail)
+        return opts.method === 'POST' ? { id: 3, name: opts.body.name } : {}
+      }
+      if (path === '/api/account/me') return { role: 'coach' }
+      if (path === '/api/athletes') return squad
+      return {}
+    })
+    renderWithRouter(<Roster />)
+  }
+  async function openAddForm() {
+    fireEvent.click(await screen.findByRole('button', { name: /Add athlete/i }))
+    return screen.getByRole('heading', { name: 'Add athlete' }).closest('form')
+  }
+
+  it('adds an athlete and confirms it', async () => {
+    setup()
+    const form = await openAddForm()
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: '  Jordan Silva ' } })
+    fireEvent.change(within(form).getByLabelText(/Squad number/i), { target: { value: '9' } })
+    fireEvent.change(within(form).getByPlaceholderText('e.g. 180'), { target: { value: '181' } })
+    fireEvent.submit(form)
+    await waitFor(() => expect(writes[0]).toEqual(['POST', '/api/athletes', expect.objectContaining({
+      name: 'Jordan Silva', squad_number: 9, height_cm: 181, weight_kg: null, email: null,
+    })]))
+    expect(await screen.findByText(/Jordan Silva/)).toBeInTheDocument()
+  })
+
+  it('requires a name', async () => {
+    setup()
+    const form = await openAddForm()
+    fireEvent.submit(form)
+    expect(await screen.findByText('Athlete name is required')).toBeInTheDocument()
+    expect(writes).toEqual([])
+  })
+
+  it('refuses a duplicate name or squad number', async () => {
+    setup()
+    const form = await openAddForm()
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: 'alex morgan' } })
+    fireEvent.submit(form)
+    expect(await screen.findByText('alex morgan is already on the roster.')).toBeInTheDocument()
+
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: 'New Keeper' } })
+    fireEvent.change(within(form).getByLabelText(/Squad number/i), { target: { value: '1' } })
+    fireEvent.submit(form)
+    expect(await screen.findByText('Squad number 1 is already taken by Casey Keller.')).toBeInTheDocument()
+    expect(writes).toEqual([])
+  })
+
+  it('shows the server error when saving fails', async () => {
+    setup({ fail: 'Only coaches can manage the roster' })
+    const form = await openAddForm()
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: 'Jordan Silva' } })
+    fireEvent.submit(form)
+    expect(await screen.findByText('Only coaches can manage the roster')).toBeInTheDocument()
+  })
+
+  it("edits an athlete, keeping their own number, and removes their photo", async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    setup()
+    await screen.findByRole('heading', { name: 'Alex Morgan' })
+    fireEvent.click(screen.getByRole('button', { name: /Edit roster/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Edit$/i })[0])
+    const form = screen.getByRole('heading', { name: 'Edit athlete' }).closest('form')
+    expect(within(form).getByLabelText(/^Name/)).toHaveValue('Alex Morgan')
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Remove photo' }))
+    await waitFor(() => expect(writes).toContainEqual(['PATCH', '/api/athletes/1', { photo: null }]))
+
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: 'Alex Morgan-Reid' } })
+    fireEvent.submit(form)
+    await waitFor(() => expect(writes).toContainEqual(['PATCH', '/api/athletes/1', expect.objectContaining({
+      name: 'Alex Morgan-Reid', squad_number: 13,
+    })]))
+    confirmSpy.mockRestore()
+  })
+})
+

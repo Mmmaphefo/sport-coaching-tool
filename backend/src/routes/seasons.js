@@ -1,417 +1,458 @@
+// AI assistance: drafted with Claude (Opus 5.5) via claude.ai; reviewed and tested by the project team.
+//
+// Seasons (T17) and the schedule generator (T23). A season is a named date
+// range per squad; its detail reuses the same teamStats building blocks as
+// the printable season report (T20), so the two can never disagree. The
+// generator spreads a list of opponents across the season at a fixed cadence
+// and flags clashes advisory-style — the same "flag, never block" rule the
+// calendar already follows for single events.
+
 const express = require('express');
-const { Pool } = require('pg');
+const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
-const { getOwnedSquadId, getOwnedSquadIdForCoach, getOrCreateUserId } = require('./_squad');
-const {
-  getSquadMatches,
-  summariseMatches,
-} = require('../lib/matchStats');
-const { buildCsv, buildPdf } = require('../lib/reports');
+const { getOwnedSquadIdForStaff, getOrCreateUserId } = require('./_squad');
+const { findClashes } = require('../lib/clashes');
+const { loadTeamMatches, summarise, byOpponent } = require('../lib/teamStats');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function loadSeasonWithAccess(pool, seasonId, squadId) {
+const MAX_SEASONS = 20;
+const MAX_SPAN_DAYS = 400;
+const MAX_OPPONENTS = 12;
+
+function parseDay(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function dayString(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+// Validates and normalises the { name, starts_on, ends_on } payload shared by
+// POST and PATCH. `currentId` lets PATCH skip the season itself when checking
+// for a duplicate name. Returns the cleaned fields or throws a 400/409.
+async function validateSeasonFields(squadId, { name, starts_on, ends_on }, currentId = null) {
+  const cleanName = typeof name === 'string' ? name.trim() : '';
+  if (!cleanName) {
+    throw badRequest('Season name is required');
+  }
+  if (cleanName.length > 100) {
+    throw badRequest('Season name must be 100 characters or fewer');
+  }
+
+  const start = parseDay(starts_on);
+  const end = parseDay(ends_on);
+  if (!start || !end) {
+    throw badRequest('Use dates in the form YYYY-MM-DD');
+  }
+  if (start > end) {
+    throw badRequest('The start date must be on or before the end date');
+  }
+  if ((end - start) / (24 * 60 * 60 * 1000) > MAX_SPAN_DAYS) {
+    throw badRequest(`A season cannot span more than ${MAX_SPAN_DAYS} days`);
+  }
+
+  const duplicate = await pool.query(
+    'SELECT id FROM seasons WHERE squad_id = $1 AND lower(name) = lower($2)',
+    [squadId, cleanName]
+  );
+  const clash = duplicate.rows.find((row) => row.id !== currentId);
+  if (clash) {
+    const err = new Error(`You already have a season called "${cleanName}"`);
+    err.status = 409;
+    throw err;
+  }
+
+  return { name: cleanName, starts_on: dayString(start), ends_on: dayString(end) };
+}
+
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+}
+
+// Returns { athleteCount, minRosterSize, meetsMinimum } — the same gate
+// POST /api/events applies before scheduling a match, kept in step so a
+// generated fixture can never dodge the roster rule a hand-scheduled one
+// has to pass.
+async function getRosterStatus(squadId) {
   const result = await pool.query(
-    'SELECT * FROM seasons WHERE id = $1 AND squad_id = $2',
-    [seasonId, squadId]
+    `SELECT s.min_roster_size,
+            (SELECT COUNT(*)::int FROM athletes a WHERE a.squad_id = s.id) AS athlete_count
+     FROM squads s
+     WHERE s.id = $1`,
+    [squadId]
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error(`Squad ${squadId} not found while checking roster status`);
+  }
+  return {
+    athleteCount: row.athlete_count,
+    minRosterSize: row.min_roster_size,
+    meetsMinimum: row.athlete_count >= row.min_roster_size,
+  };
+}
+
+async function loadSeason(squadId, id) {
+  const numericId = Number(id);
+  if (!Number.isInteger(numericId)) return null;
+  // starts_on/ends_on are cast to text so they stay plain YYYY-MM-DD —
+  // node-pg otherwise hands back Date objects, which JSON-serialises with
+  // a timezone offset and breaks the plain day comparisons below.
+  const result = await pool.query(
+    `SELECT id, squad_id, name, starts_on::text AS starts_on, ends_on::text AS ends_on,
+            created_at, updated_at
+       FROM seasons WHERE id = $1 AND squad_id = $2`,
+    [numericId, squadId]
   );
   return result.rows[0] || null;
 }
 
-function validateSeasonDates(start, end) {
-  if (!start || !end) return 'start_date and end_date are required';
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return 'start_date and end_date must be valid dates';
+// The generator's date plan: one kickoff per opponent, `cadenceDays` apart,
+// optionally snapped forward to a weekday. Pure date math (UTC days), so the
+// preview the coach sees is exactly what gets inserted.
+function planKickoffs({ firstKickoff, cadenceDays, weekday, kickoffTime, count }) {
+  let start = parseDay(firstKickoff);
+  if (weekday !== null) {
+    while (start.getUTCDay() !== weekday) {
+      start = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    }
   }
-  if (endDate < startDate) return 'end_date must be on or after start_date';
-  return null;
+  const plan = [];
+  for (let i = 0; i < count; i += 1) {
+    const day = new Date(start.getTime() + i * cadenceDays * 24 * 60 * 60 * 1000);
+    plan.push(`${dayString(day)}T${kickoffTime}`);
+  }
+  return plan;
 }
 
 // ---------------------------------------------------------------------------
-// T17: CRUD
+// Routes
 // ---------------------------------------------------------------------------
 
-// GET /api/seasons — the squad's seasons, newest first
+// GET /api/seasons — the squad's seasons, newest first, with calendar counts.
 router.get('/', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     const result = await pool.query(
-      `SELECT s.*,
-              (SELECT COUNT(*) FROM events e WHERE e.season_id = s.id)::int AS event_count
-       FROM seasons s
-       WHERE s.squad_id = $1
-       ORDER BY s.start_date DESC`,
+      `SELECT s.id, s.name, s.starts_on::text AS starts_on, s.ends_on::text AS ends_on, s.created_at, s.updated_at,
+              COUNT(e.id)::int AS event_count,
+              COUNT(e.id) FILTER (WHERE e.status = 'scheduled')::int AS scheduled_count,
+              COUNT(e.id) FILTER (WHERE e.status = 'completed')::int AS completed_count
+         FROM seasons s
+         LEFT JOIN events e ON e.season_id = s.id
+        WHERE s.squad_id = $1
+        GROUP BY s.id
+        ORDER BY s.starts_on DESC, s.id DESC`,
       [squadId]
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Error fetching seasons:', err.message);
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('Error listing seasons:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// POST /api/seasons — create a season (coach only)
+// POST /api/seasons — create a season. Staff only, like event scheduling.
 router.post('/', requireAuth(), async (req, res) => {
   try {
-    const { name, start_date, end_date } = req.body;
-
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Season name is required' });
-    }
-    const dateError = validateSeasonDates(start_date, end_date);
-    if (dateError) {
-      return res.status(400).json({ error: dateError });
-    }
-
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
+    const count = await pool.query('SELECT COUNT(*)::int AS n FROM seasons WHERE squad_id = $1', [squadId]);
+    if (count.rows[0].n >= MAX_SEASONS) {
+      throw badRequest(`You already have ${MAX_SEASONS} seasons — delete one before adding another`);
+    }
+
+    const fields = await validateSeasonFields(squadId, req.body);
     const result = await pool.query(
-      `INSERT INTO seasons (squad_id, name, start_date, end_date)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [squadId, name.trim(), start_date, end_date]
+      `INSERT INTO seasons (squad_id, name, starts_on, ends_on)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, squad_id, name, starts_on::text AS starts_on, ends_on::text AS ends_on,
+                 created_at, updated_at`,
+      [squadId, fields.name, fields.starts_on, fields.ends_on]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('Error creating season:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// PATCH /api/seasons/:id — rename or change the date range (coach only)
-router.patch('/:id', requireAuth(), async (req, res) => {
+// GET /api/seasons/:id — season detail: the record and per-match breakdown
+// over the season's dates (same teamStats pipeline as the printable report)
+// plus the season's own schedule with live clash flags on upcoming matches.
+router.get('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
-    const season = await loadSeasonWithAccess(pool, req.params.id, squadId);
+    const season = await loadSeason(squadId, req.params.id);
     if (!season) {
       return res.status(404).json({ error: 'Season not found' });
     }
 
-    const { name, start_date, end_date } = req.body;
-    const startDate = start_date ?? season.start_date;
-    const endDate = end_date ?? season.end_date;
-    const dateError = validateSeasonDates(startDate, endDate);
-    if (dateError) {
-      return res.status(400).json({ error: dateError });
-    }
-    if (name !== undefined && !name.trim()) {
-      return res.status(400).json({ error: 'Season name cannot be empty' });
+    const start = parseDay(season.starts_on);
+    const range = {
+      from: start,
+      toExclusive: new Date(parseDay(season.ends_on).getTime() + 24 * 60 * 60 * 1000),
+    };
+    const matches = await loadTeamMatches(pool, squadId, range);
+
+    const schedule = await pool.query(
+      `SELECT id, title, opponent, event_date, duration_minutes, location, status, format
+         FROM events
+        WHERE season_id = $1
+        ORDER BY event_date`,
+      [season.id]
+    );
+
+    // Clash flags ride along on scheduled matches only — completed or live
+    // ones can no longer be moved, so re-checking them would be noise.
+    for (const row of schedule.rows) {
+      row.clashes = row.status === 'scheduled'
+        ? await findClashes(pool, squadId, row.event_date, row.duration_minutes, {
+            excludeEventId: row.id,
+          })
+        : [];
     }
 
+    res.json({
+      season,
+      summary: summarise(matches),
+      matches,
+      opponents: byOpponent(matches),
+      schedule: schedule.rows,
+    });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('Error loading season:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /api/seasons/:id — rename or resize a season.
+router.patch('/:id', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+
+    const season = await loadSeason(squadId, req.params.id);
+    if (!season) {
+      return res.status(404).json({ error: 'Season not found' });
+    }
+
+    const fields = await validateSeasonFields(
+      squadId,
+      {
+        name: req.body.name !== undefined ? req.body.name : season.name,
+        starts_on: req.body.starts_on !== undefined ? req.body.starts_on : season.starts_on,
+        ends_on: req.body.ends_on !== undefined ? req.body.ends_on : season.ends_on,
+      },
+      season.id
+    );
+
     const result = await pool.query(
-      `UPDATE seasons
-       SET name = COALESCE($1, name),
-           start_date = COALESCE($2, start_date),
-           end_date = COALESCE($3, end_date),
-           updated_at = now()
-       WHERE id = $4 RETURNING *`,
-      [name ? name.trim() : null, start_date || null, end_date || null, season.id]
+      `UPDATE seasons SET name = $1, starts_on = $2, ends_on = $3, updated_at = now()
+        WHERE id = $4 AND squad_id = $5
+       RETURNING id, squad_id, name, starts_on::text AS starts_on, ends_on::text AS ends_on,
+                 created_at, updated_at`,
+      [fields.name, fields.starts_on, fields.ends_on, season.id, squadId]
     );
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('Error updating season:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// DELETE /api/seasons/:id — remove a season; events keep their data and just
-// become untagged (season_id is SET NULL).
+// DELETE /api/seasons/:id — remove the season. Its events stay on the
+// calendar (the FK just clears their season tag).
 router.delete('/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
-    const result = await pool.query(
-      'DELETE FROM seasons WHERE id = $1 AND squad_id = $2 RETURNING id',
-      [req.params.id, squadId]
-    );
-    if (result.rows.length === 0) {
+    const season = await loadSeason(squadId, req.params.id);
+    if (!season) {
       return res.status(404).json({ error: 'Season not found' });
     }
-    res.sendStatus(204);
+
+    await pool.query('DELETE FROM seasons WHERE id = $1 AND squad_id = $2', [season.id, squadId]);
+    res.json({ ok: true });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('Error deleting season:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ---------------------------------------------------------------------------
-// T17: Season totals + per-event breakdown
-// ---------------------------------------------------------------------------
-
-// GET /api/seasons/:id/summary — W/D/L + GF/GA totals and one row per played
-// match inside the season. Matches count if they're explicitly tagged with this
-// season, or (for untagged events) if their date falls inside the season range.
-// Fixtures always count by date — they have no season tag of their own.
-router.get('/:id/summary', requireAuth(), async (req, res) => {
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
-
-    const season = await loadSeasonWithAccess(pool, req.params.id, squadId);
-    if (!season) {
-      return res.status(404).json({ error: 'Season not found' });
-    }
-
-    const matches = await getSquadMatches(pool, squadId, {
-      seasonId: season.id,
-      fromDate: season.start_date,
-      toDate: season.end_date,
-    });
-
-    res.json({
-      season,
-      totals: summariseMatches(matches),
-      matches,
-    });
-  } catch (err) {
-    console.error('Error fetching season summary:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// T20: Season report exports
-// ---------------------------------------------------------------------------
-
-async function buildSeasonReport(pool, season, squadId) {
-  const matches = await getSquadMatches(pool, squadId, {
-    seasonId: season.id,
-    fromDate: season.start_date,
-    toDate: season.end_date,
-  });
-  const totals = summariseMatches(matches);
-  const squadResult = await pool.query('SELECT name FROM squads WHERE id = $1', [squadId]);
-  const squadName = squadResult.rows[0]?.name || 'Squad';
-
-  return { matches, totals, squadName };
-}
-
-function seasonReportCsv(season, squadName, totals, matches) {
-  const rows = [
-    ['Season Report', season.name],
-    ['Squad', squadName],
-    ['Period', `${season.start_date} to ${season.end_date}`],
-    [],
-    ['Played', 'Won', 'Drawn', 'Lost', 'Goals For', 'Goals Against', 'Goal Difference', 'Points'],
-    [totals.played, totals.wins, totals.draws, totals.losses, totals.gf, totals.ga, totals.gd, totals.points],
-    [],
-    ['Date', 'Opponent', 'Venue', 'For', 'Against', 'Result'],
-  ];
-  for (const m of matches) {
-    rows.push([
-      m.date ? new Date(m.date).toISOString().slice(0, 10) : '',
-      m.opponent,
-      m.venue || '',
-      m.gf,
-      m.ga,
-      m.result,
-    ]);
-  }
-  return rows;
-}
-
-function seasonReportLines(season, squadName, totals, matches) {
-  const lines = [
-    { text: `Season Report — ${season.name}`, size: 18, bold: true, gapAfter: 22 },
-    { text: `${squadName} · ${season.start_date} to ${season.end_date}`, size: 10, gapAfter: 18 },
-    { text: 'Season Totals', size: 13, bold: true, gapAfter: 16 },
-    {
-      text: `Played ${totals.played}  ·  W ${totals.wins}  D ${totals.draws}  L ${totals.losses}  ·  GF ${totals.gf}  GA ${totals.ga}  GD ${totals.gd > 0 ? '+' : ''}${totals.gd}  ·  Points ${totals.points}`,
-      size: 10,
-      gapAfter: 18,
-    },
-    { text: 'Matches', size: 13, bold: true, gapAfter: 14 },
-  ];
-  if (matches.length === 0) {
-    lines.push({ text: 'No completed matches in this season yet.', size: 10, gapAfter: 12 });
-  }
-  for (const m of matches) {
-    const date = m.date ? new Date(m.date).toISOString().slice(0, 10) : 'TBD';
-    const venue = m.venue ? `(${m.venue}) ` : '';
-    lines.push({
-      text: `${date}  ${venue}vs ${m.opponent}  —  ${m.gf}-${m.ga} (${m.result})`,
-      size: 10,
-      gapAfter: 13,
-    });
-  }
-  return lines;
-}
-
-router.get('/:id/report.csv', requireAuth(), async (req, res) => {
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
-
-    const season = await loadSeasonWithAccess(pool, req.params.id, squadId);
-    if (!season) {
-      return res.status(404).json({ error: 'Season not found' });
-    }
-
-    const { matches, totals, squadName } = await buildSeasonReport(pool, season, squadId);
-    const csv = buildCsv(seasonReportCsv(season, squadName, totals, matches));
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="season-${season.id}-report.csv"`
-    );
-    res.send(csv);
-  } catch (err) {
-    console.error('Error exporting season CSV:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-router.get('/:id/report.pdf', requireAuth(), async (req, res) => {
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadId(pool, clerkUserId);
-
-    const season = await loadSeasonWithAccess(pool, req.params.id, squadId);
-    if (!season) {
-      return res.status(404).json({ error: 'Season not found' });
-    }
-
-    const { matches, totals, squadName } = await buildSeasonReport(pool, season, squadId);
-    const pdf = buildPdf(seasonReportLines(season, squadName, totals, matches));
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="season-${season.id}-report.pdf"`
-    );
-    res.send(pdf);
-  } catch (err) {
-    console.error('Error exporting season PDF:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// T23: Season schedule generator with clash flagging
-// ---------------------------------------------------------------------------
-
-function findClashes(newDate, durationMinutes, existingEvents) {
-  const start = new Date(newDate).getTime();
-  const end = start + durationMinutes * 60 * 1000;
-  return existingEvents.filter((e) => {
-    if (!e.event_date) return false;
-    const eStart = new Date(e.event_date).getTime();
-    const eEnd = eStart + (e.duration_minutes || 90) * 60 * 1000;
-    return start < eEnd && eStart < end;
-  });
-}
-
-// POST /api/seasons/:id/schedule
-// body: { opponents: string[], start_date, interval_days, time (HH:MM),
-//         location, duration_minutes, alternate_venues }
-// Creates one match event per opponent at the chosen interval from start_date,
-// all tagged to this season, and flags any that clash with the squad's existing
-// events (scheduled/live/completed, overlapping in time). Cancelled events are
-// ignored for clash purposes.
+// POST /api/seasons/:id/schedule — generate the season's match schedule (T23).
+//
+// Body:
+//   opponents       required, 1-12 names (deduped, order kept)
+//   first_kickoff   YYYY-MM-DD, defaults to the season start (or tomorrow
+//                   when the season is already underway)
+//   kickoff_time    HH:MM, default 10:00
+//   cadence_days    days between matches, default 7 (1-28)
+//   weekday         optional 0-6 (Sunday=0): snap kickoffs to that weekday
+//   duration_minutes default 90 (15-300)
+//   location        optional, applied to every match
+//   dry_run         true = return the plan with clash flags, insert nothing
+//
+// Clashes are flagged on the response, never blocking — matching how the
+// calendar treats a single event that overlaps another.
 router.post('/:id/schedule', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
-    const squadId = await getOwnedSquadIdForCoach(pool, clerkUserId);
     const userId = await getOrCreateUserId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
-    const season = await loadSeasonWithAccess(pool, req.params.id, squadId);
+    const season = await loadSeason(squadId, req.params.id);
     if (!season) {
       return res.status(404).json({ error: 'Season not found' });
     }
 
-    const {
-      opponents,
-      start_date,
-      interval_days = 7,
-      time = '15:00',
-      location,
-      duration_minutes = 90,
-      alternate_venues = false,
-    } = req.body;
-
-    if (!Array.isArray(opponents) || opponents.length === 0 || opponents.some((o) => !o || !o.trim())) {
-      return res.status(400).json({ error: 'opponents must be a non-empty list of names' });
-    }
-    const interval = Number(interval_days);
-    if (!Number.isFinite(interval) || interval < 1) {
-      return res.status(400).json({ error: 'interval_days must be at least 1' });
-    }
-    const duration = Number(duration_minutes) || 90;
-    if (!/^\d{2}:\d{2}$/.test(String(time))) {
-      return res.status(400).json({ error: 'time must be in HH:MM format' });
-    }
-
-    const startDate = new Date(`${start_date}T${time}`);
-    if (Number.isNaN(startDate.getTime())) {
-      return res.status(400).json({ error: 'start_date is required (YYYY-MM-DD)' });
-    }
-    const seasonEnd = new Date(`${season.end_date}T23:59:59`);
-    if (startDate > seasonEnd) {
-      return res.status(400).json({ error: 'start_date falls outside this season' });
-    }
-
-    const existing = await pool.query(
-      `SELECT id, title, opponent, event_date, duration_minutes
-       FROM events
-       WHERE squad_id = $1 AND status IN ('scheduled', 'live')`,
-      [squadId]
-    );
-    const existingEvents = existing.rows;
-
-    const created = [];
-    const clashes = [];
-    let cursor = new Date(startDate);
-
-    for (let i = 0; i < opponents.length; i++) {
-      const opponent = opponents[i].trim();
-      const eventDate = cursor.toISOString();
-
-      const overlapping = findClashes(eventDate, duration, existingEvents);
-      const clashInfo = overlapping.map((e) => ({
-        event_id: e.id,
-        against: e.title || e.opponent,
-        event_date: e.event_date,
-      }));
-
-      const home = !alternate_venues || i % 2 === 0;
-      const venue = home ? location : `@ ${opponent}`;
-
-      const insert = await pool.query(
-        `INSERT INTO events (squad_id, title, opponent, event_type, format, season_id, event_date, location, duration_minutes, created_by)
-         VALUES ($1, $2, $3, 'match', 'match', $4, $5, $6, $7, $8) RETURNING id, opponent, event_date, location`,
-        [squadId, `vs ${opponent}`, opponent, season.id, eventDate, venue || null, duration, userId]
-      );
-      const event = insert.rows[0];
-      created.push(event);
-
-      if (clashInfo.length > 0) {
-        clashes.push({ event_id: event.id, opponent, conflicts_with: clashInfo });
+    // --- opponents ---------------------------------------------------------
+    const rawOpponents = Array.isArray(req.body.opponents)
+      ? req.body.opponents
+      : String(req.body.opponents || '').split(/[\n,]/);
+    const opponents = [];
+    const seen = new Set();
+    for (const raw of rawOpponents) {
+      const name = typeof raw === 'string' ? raw.trim() : '';
+      if (!name) continue;
+      if (name.length > 100) {
+        throw badRequest('Opponent names must be 100 characters or fewer');
       }
-
-      cursor = new Date(cursor.getTime() + interval * 24 * 60 * 60 * 1000);
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      opponents.push(name);
+    }
+    if (opponents.length === 0) {
+      throw badRequest('Add at least one opponent to generate a schedule');
+    }
+    if (opponents.length > MAX_OPPONENTS) {
+      throw badRequest(`A generated schedule supports at most ${MAX_OPPONENTS} opponents`);
     }
 
-    res.status(201).json({
-      created_count: created.length,
-      events: created,
-      clashes,
-      clash_count: clashes.length,
-      season_ends: season.end_date,
-      generated_past_season_end:
-        cursor.getTime() - interval * 24 * 60 * 60 * 1000 > seasonEnd.getTime(),
-    });
+    // --- cadence and kickoff ----------------------------------------------
+    const cadenceDays = req.body.cadence_days === undefined ? 7 : Number(req.body.cadence_days);
+    if (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > 28) {
+      throw badRequest('cadence_days must be a whole number between 1 and 28');
+    }
+
+    const kickoffTime = req.body.kickoff_time === undefined ? '10:00' : req.body.kickoff_time;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(kickoffTime)) {
+      throw badRequest('kickoff_time must be in the form HH:MM');
+    }
+
+    const durationMinutes = req.body.duration_minutes === undefined ? 90 : Number(req.body.duration_minutes);
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes > 300) {
+      throw badRequest('duration_minutes must be a whole number between 15 and 300');
+    }
+
+    let weekday = null;
+    if (req.body.weekday !== undefined && req.body.weekday !== null && req.body.weekday !== '') {
+      weekday = Number(req.body.weekday);
+      if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+        throw badRequest('weekday must be 0-6 (Sunday = 0)');
+      }
+    }
+
+    const location = req.body.location === undefined || req.body.location === null
+      ? null
+      : String(req.body.location).trim();
+    if (location && location.length > 200) {
+      throw badRequest('location must be 200 characters or fewer');
+    }
+
+    // The first kickoff defaults into the season: its start date when that
+    // is still ahead, otherwise tomorrow (matches can never be scheduled in
+    // the past, so an already-underway season starts generating from now).
+    const tomorrow = dayString(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    const firstKickoff = req.body.first_kickoff || (season.starts_on > tomorrow ? season.starts_on : tomorrow);
+    if (!parseDay(firstKickoff)) {
+      throw badRequest('first_kickoff must be in the form YYYY-MM-DD');
+    }
+    // The generated schedule lives inside the season — a kickoff before it
+    // starts would create a match the season's own totals never count.
+    if (firstKickoff < season.starts_on) {
+      throw badRequest(`The first kickoff must be on or after the season start (${season.starts_on})`);
+    }
+
+    // --- the plan ----------------------------------------------------------
+    const kickoffs = planKickoffs({ firstKickoff, cadenceDays, weekday, kickoffTime, count: opponents.length });
+
+    for (let i = 0; i < kickoffs.length; i += 1) {
+      // Same past-date rule as POST /api/events (one-minute grace).
+      if (new Date(kickoffs[i]).getTime() < Date.now() - 60 * 1000) {
+        throw badRequest('The first kickoff must be in the future — check the date and time');
+      }
+      // ends_on is inclusive: a match on the last day still fits. Both
+      // sides are YYYY-MM-DD, so the comparison is a plain day compare.
+      if (kickoffs[i].slice(0, 10) > season.ends_on) {
+        throw badRequest(
+          `Only ${i} of ${opponents.length} matches fit before the season ends on ${season.ends_on} — ` +
+          'remove opponents, shorten the gap between matches, or extend the season'
+        );
+      }
+      if (new Date(kickoffs[i]).getTime() > Date.now() + 2 * 365 * 24 * 60 * 60 * 1000) {
+        throw badRequest('Cannot schedule a match more than 2 years ahead');
+      }
+    }
+
+    // Same roster gate as scheduling a match by hand.
+    const roster = await getRosterStatus(squadId);
+    if (!roster.meetsMinimum) {
+      return res.status(400).json({
+        error: `Your roster needs at least ${roster.minRosterSize} athletes to schedule a match (you currently have ${roster.athleteCount}).`,
+      });
+    }
+
+    // --- dry run: the plan plus clash flags, nothing inserted --------------
+    if (req.body.dry_run) {
+      const planned = [];
+      for (let i = 0; i < opponents.length; i += 1) {
+        const clashes = await findClashes(pool, squadId, kickoffs[i], durationMinutes);
+        planned.push({ opponent: opponents[i], event_date: kickoffs[i], clashes });
+      }
+      const clashCount = planned.filter((p) => p.clashes.length > 0).length;
+      return res.json({ dry_run: true, season, planned, clash_count: clashCount });
+    }
+
+    // --- real run ----------------------------------------------------------
+    const created = [];
+    for (let i = 0; i < opponents.length; i += 1) {
+      const result = await pool.query(
+        `INSERT INTO events (squad_id, opponent, event_type, format, event_date, location, duration_minutes, created_by, season_id)
+         VALUES ($1, $2, 'match', 'match', $3, $4, $5, $6, $7) RETURNING *`,
+        [squadId, opponents[i], kickoffs[i], location, durationMinutes, userId, season.id]
+      );
+      const event = result.rows[0];
+      event.clashes = await findClashes(pool, squadId, kickoffs[i], durationMinutes, {
+        excludeEventId: event.id,
+      });
+      created.push(event);
+    }
+
+    res.status(201).json({ season, created });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('Error generating schedule:', err.message);
     res.status(500).json({ error: 'Server error' });
   }

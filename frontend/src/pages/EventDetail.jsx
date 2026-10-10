@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
-import { apiRequest, apiDownload } from '../lib/api'
+import { apiRequest } from '../lib/api'
 import { ACTION_TYPES, formatActionType } from '../lib/actions'
 import { useConfirm } from '../lib/confirm'
 import WeatherWidget from '../components/WeatherWidget'
@@ -11,6 +11,7 @@ import VenueMapEditor from '../components/VenueMapEditor'
 import AddressSearchInput from '../components/AddressSearchInput'
 import ClashBanner from '../components/ClashBanner'
 import RsvpPanel from '../components/RsvpPanel'
+import PostMatchSummary from '../components/PostMatchSummary'
 import { useCountUp } from '../lib/useCountUp'
 import './EventDetail.css'
 
@@ -29,55 +30,6 @@ const statusLabel = {
   cancelled: 'Cancelled',
   open: 'Open',
   full: 'Full',
-}
-
-// T22: auto post-match summary & highlights. Only meaningful once the event has
-// completed; any failure to build it is silent — it's a bonus panel.
-function MatchSummaryPanel({ id, getToken, status }) {
-  const [summary, setSummary] = useState(null)
-
-  useEffect(() => {
-    if (status !== 'completed') return undefined
-    let cancelled = false
-    apiRequest(`/api/events/${id}/summary`, { getToken })
-      .then((data) => {
-        // Bonus panel: only accept a well-shaped summary so a bad payload
-        // can never take the whole page down with it.
-        if (!cancelled && data && data.stats && Array.isArray(data.highlights)) {
-          setSummary(data)
-        }
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [id, status, getToken])
-
-  if (status !== 'completed' || !summary) return null
-
-  return (
-    <section className="event-summary">
-      <span className="event-summary-headline">{summary.headline}</span>
-      <p className="event-summary-narrative">{summary.narrative}</p>
-      {summary.highlights.length > 0 && (
-        <ul className="event-summary-highlights">
-          {summary.highlights.map((h, i) => (
-            <li key={i} className={`event-summary-highlight event-summary-highlight--${h.kind}`}>
-              {h.minute != null && <span className="timeline-minute">{h.minute}'</span>}
-              {h.text}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="event-summary-stats">
-        <span>{summary.stats.goals} goals</span>
-        <span>{summary.stats.yellowCards} yellow</span>
-        <span>{summary.stats.redCards} red</span>
-        <span>{summary.stats.penaltiesScored} pens scored</span>
-        <span>{summary.stats.penaltiesMissed} pens missed</span>
-      </div>
-    </section>
-  )
 }
 
 // '2026-09-17T17:00:00.000Z' -> '2026-09-17T18:00' in the browser's timezone,
@@ -123,7 +75,6 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
   const [logError, setLogError] = useState('')
   const [error, setError] = useState('')
   const [statusSaving, setStatusSaving] = useState(false)
-  const [exporting, setExporting] = useState('')
   const [editingEvent, setEditingEvent] = useState(false)
   const [eventForm, setEventForm] = useState(null)
   const [eventSaving, setEventSaving] = useState(false)
@@ -185,18 +136,6 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
       setError(err.message)
     } finally {
       setStatusSaving(false)
-    }
-  }
-
-  async function handleExport(format) {
-    setExporting(format)
-    setError('')
-    try {
-      await apiDownload(`/api/events/${id}/report.${format}`, { getToken })
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setExporting('')
     }
   }
 
@@ -291,24 +230,6 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
           {event.location && <p className="event-detail-location">📍 {event.location}</p>}
         </div>
         <div className="event-detail-actions">
-          {event.event_type === 'match' && (
-            <>
-              <button
-                className="btn btn-ghost"
-                disabled={exporting !== ''}
-                onClick={() => handleExport('csv')}
-              >
-                {exporting === 'csv' ? 'Exporting...' : 'Report CSV'}
-              </button>
-              <button
-                className="btn btn-ghost"
-                disabled={exporting !== ''}
-                onClick={() => handleExport('pdf')}
-              >
-                {exporting === 'pdf' ? 'Exporting...' : 'Report PDF'}
-              </button>
-            </>
-          )}
           {!isAthlete && event.status === 'scheduled' && (
             <button className="btn btn-gold" disabled={statusSaving} onClick={() => handleStatusChange('live')}>
               Start live
@@ -323,6 +244,11 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
             <button className="btn btn-ghost" onClick={openEventEdit}>
               Edit details
             </button>
+          )}
+          {event.event_type === 'match' && event.status === 'completed' && (
+            <Link to={`/reports/match/event/${id}`} className="btn btn-ghost">
+              Match report
+            </Link>
           )}
         </div>
       </div>
@@ -431,7 +357,13 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
         </div>
       )}
 
-      <MatchSummaryPanel id={id} getToken={getToken} status={event.status} />
+      {event.event_type === 'match' && event.status === 'completed' && (
+        <PostMatchSummary
+          result={result}
+          timeline={timeline}
+          opponent={event.opponent || 'Opponent'}
+        />
+      )}
 
       {penalties && penalties.length > 0 && (
         <div className="event-penalties">
@@ -440,7 +372,7 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
             {penalties.map((p) => (
               <li key={p.id} className="event-penalty-item">
                 <span className="event-penalty-minute">{p.minute}'</span>
-                <span className="event-penalty-type">{p.action_type}</span>
+                <span className="event-penalty-type">{formatActionType(p.action_type)}</span>
                 <span className="event-penalty-player">{p.athlete_name || 'Opponent'}</span>
               </li>
             ))}
@@ -923,6 +855,11 @@ function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
                       >
                         Go live
                       </button>
+                    )}
+                    {fixture.status === 'completed' && (fixture.is_home_mine || fixture.is_away_mine) && (
+                      <Link to={`/reports/match/fixture/${fixture.id}`} className="btn btn-ghost">
+                        Match report
+                      </Link>
                     )}
                   </div>
                 </div>

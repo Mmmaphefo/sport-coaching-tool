@@ -11,23 +11,37 @@ function RoleSelect() {
   const [saving, setSaving] = useState(false)
   const [inviteLink, setInviteLink] = useState('')
 
-  // If user already has a role set, skip to dashboard
+  // If user already has a role set, skip to dashboard.
+  // This check runs in the background with a timeout so the page stays interactive
+  // even if the backend is asleep or Clerk's getToken hangs (Safari).
   useEffect(() => {
     if (!isSignedIn) {
       return
     }
     
+    let cancelled = false
+    
     async function checkRole() {
       try {
-        const me = await apiRequest('/api/account/me', { getToken })
+        const tokenPromise = getToken()
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 8000)
+        )
+        const token = await Promise.race([tokenPromise, timeoutPromise])
+        if (cancelled) return
+        
+        const me = await apiRequest('/api/account/me', { getToken: () => Promise.resolve(token) })
+        if (cancelled) return
         if (me.role && me.role !== 'coach') {
           navigate('/dashboard', { replace: true })
         }
       } catch {
-        // Ignore errors, let user choose
+        // Ignore errors/timeout, let user choose
       }
     }
     checkRole()
+    
+    return () => { cancelled = true }
   }, [isSignedIn, getToken, navigate])
 
   async function handleSelect(role) {
@@ -39,28 +53,31 @@ function RoleSelect() {
     }
     
     setSaving(true)
-    try {
-      if (isSignedIn) {
-        await apiRequest('/api/account/role', {
+    
+    // Navigate immediately so the UI never freezes waiting for the backend.
+    // The role PATCH runs in the background for coach/player; browsing skips it entirely.
+    const savePromise = (isSignedIn && role !== 'browser')
+      ? apiRequest('/api/account/role', {
           method: 'PATCH',
           body: { role },
           getToken,
+        }).catch((err) => {
+          console.error('Failed to set role:', err)
         })
+      : Promise.resolve()
+    
+    if (role === 'coach') {
+      if (isSignedIn) {
+        navigate('/setup', { replace: true })
+      } else {
+        navigate('/sign-up?role=coach', { replace: true })
       }
-      
-      if (role === 'coach') {
-        if (isSignedIn) {
-          navigate('/setup', { replace: true })
-        } else {
-          navigate('/sign-up?role=coach', { replace: true })
-        }
-      } else if (role === 'browser') {
-        navigate('/public', { replace: true })
-      }
-    } catch (err) {
-      console.error('Failed to set role:', err)
-      setSaving(false)
+    } else if (role === 'browser') {
+      navigate('/public', { replace: true })
     }
+    
+    await savePromise
+    setSaving(false)
   }
 
   async function handleInviteSubmit(e) {
@@ -88,7 +105,7 @@ function RoleSelect() {
       <div className="role-select-overlay" />
       <div className="role-select-vignette" />
 
-      <button className="role-select-back" onClick={() => navigate('/')}>
+      <button className="role-select-back" onClick={() => navigate(isSignedIn ? '/dashboard' : '/')}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5" />
           <path d="m12 19-7-7 7-7" />

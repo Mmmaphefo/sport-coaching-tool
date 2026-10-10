@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react'
 import { Link } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { apiRequest } from '../lib/api'
+import TeamCompare from '../components/TeamCompare'
 import './Compare.css'
 
 function StatBox({ label, valueA, valueB, accent = false }) {
@@ -30,6 +31,7 @@ function Compare() {
   const [comparison, setComparison] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState('athletes') // athletes | team
 
   useEffect(() => {
     async function loadRoster() {
@@ -73,73 +75,90 @@ function Compare() {
         <header className="cmp-head">
           <div>
             <span className="cmp-eyebrow">Head to head</span>
-            <h1 className="cmp-title">Compare athletes</h1>
+            <h1 className="cmp-title">{tab === 'team' ? 'Compare your team' : 'Compare athletes'}</h1>
           </div>
           <Link to="/roster" className="btn btn-ghost">Back to roster</Link>
         </header>
 
-        <form className="cmp-selector" onSubmit={handleCompare}>
-          <label className="cmp-select-label">
-            Athlete A
-            <select value={athleteAId} onChange={(e) => setAthleteAId(e.target.value)} required>
-              <option value="">Select athlete...</option>
-              {athletes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.squad_number != null ? `#${a.squad_number} ` : ''}{a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="cmp-select-label">
-            Athlete B
-            <select value={athleteBId} onChange={(e) => setAthleteBId(e.target.value)} required>
-              <option value="">Select athlete...</option>
-              {athletes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.squad_number != null ? `#${a.squad_number} ` : ''}{a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button type="submit" className="btn btn-gold" disabled={loading || !athleteAId || !athleteBId}>
-            {loading ? 'Loading...' : 'Compare'}
+        <div className="cmp-tabs" role="tablist" aria-label="What to compare">
+          <button type="button" role="tab" id="cmp-tab-athletes" aria-controls="cmp-panel"
+            aria-selected={tab === 'athletes'} className="cmp-tab" onClick={() => setTab('athletes')}>
+            Athletes
           </button>
-        </form>
+          <button type="button" role="tab" id="cmp-tab-team" aria-controls="cmp-panel"
+            aria-selected={tab === 'team'} className="cmp-tab" onClick={() => setTab('team')}>
+            Team vs opponents
+          </button>
+        </div>
 
-        {error && <div className="cmp-error">{error}</div>}
+        <div id="cmp-panel" role="tabpanel" aria-labelledby={`cmp-tab-${tab}`}>
+          {tab === 'team' ? <TeamCompare /> : (
+            <>
+              <form className="cmp-selector" onSubmit={handleCompare}>
+                <label className="cmp-select-label">
+                  Athlete A
+                  <select value={athleteAId} onChange={(e) => setAthleteAId(e.target.value)} required>
+                    <option value="">Select athlete...</option>
+                    {athletes.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.squad_number != null ? `#${a.squad_number} ` : ''}{a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-        {comparison && (
-          <div className="cmp-result">
-            <div className="cmp-athlete-header">
-              <div className="cmp-athlete-name">
-                <span className="cmp-athlete-number">
-                  {comparison.athleteA.squad_number != null ? `#${comparison.athleteA.squad_number}` : ''}
-                </span>
-                <h2>{comparison.athleteA.name}</h2>
-                {comparison.athleteA.position && <span className="cmp-position">{comparison.athleteA.position}</span>}
-              </div>
-              <div className="cmp-athlete-name">
-                <span className="cmp-athlete-number">
-                  {comparison.athleteB.squad_number != null ? `#${comparison.athleteB.squad_number}` : ''}
-                </span>
-                <h2>{comparison.athleteB.name}</h2>
-                {comparison.athleteB.position && <span className="cmp-position">{comparison.athleteB.position}</span>}
-              </div>
-            </div>
+                <label className="cmp-select-label">
+                  Athlete B
+                  <select value={athleteBId} onChange={(e) => setAthleteBId(e.target.value)} required>
+                    <option value="">Select athlete...</option>
+                    {athletes.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.squad_number != null ? `#${a.squad_number} ` : ''}{a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <div className="cmp-stats-grid">
-              <StatBox label="Appearances" valueA={comparison.athleteA.stats.appearances} valueB={comparison.athleteB.stats.appearances} />
-              <StatBox label="Goals" valueA={comparison.athleteA.stats.goals} valueB={comparison.athleteB.stats.goals} accent />
-              <StatBox label="Assists" valueA={comparison.athleteA.stats.assists} valueB={comparison.athleteB.stats.assists} />
-              <StatBox label="G+A per match" valueA={comparison.athleteA.stats.involvementsPerMatch} valueB={comparison.athleteB.stats.involvementsPerMatch} accent />
-              <StatBox label="Penalties" valueA={comparison.athleteA.stats.penalties} valueB={comparison.athleteB.stats.penalties} />
-              <StatBox label="Yellow cards" valueA={comparison.athleteA.stats.yellowCards} valueB={comparison.athleteB.stats.yellowCards} />
-              <StatBox label="Red cards" valueA={comparison.athleteA.stats.redCards} valueB={comparison.athleteB.stats.redCards} />
-            </div>
-          </div>
-        )}
+                <button type="submit" className="btn btn-gold" disabled={loading || !athleteAId || !athleteBId}>
+                  {loading ? 'Loading...' : 'Compare'}
+                </button>
+              </form>
+
+              {error && <div className="cmp-error">{error}</div>}
+
+              {comparison && (
+                <div className="cmp-result">
+                  <div className="cmp-athlete-header">
+                    <div className="cmp-athlete-name">
+                      <span className="cmp-athlete-number">
+                        {comparison.athleteA.squad_number != null ? `#${comparison.athleteA.squad_number}` : ''}
+                      </span>
+                      <h2>{comparison.athleteA.name}</h2>
+                      {comparison.athleteA.position && <span className="cmp-position">{comparison.athleteA.position}</span>}
+                    </div>
+                    <div className="cmp-athlete-name">
+                      <span className="cmp-athlete-number">
+                        {comparison.athleteB.squad_number != null ? `#${comparison.athleteB.squad_number}` : ''}
+                      </span>
+                      <h2>{comparison.athleteB.name}</h2>
+                      {comparison.athleteB.position && <span className="cmp-position">{comparison.athleteB.position}</span>}
+                    </div>
+                  </div>
+
+                  <div className="cmp-stats-grid">
+                    <StatBox label="Appearances" valueA={comparison.athleteA.stats.appearances} valueB={comparison.athleteB.stats.appearances} />
+                    <StatBox label="Goals" valueA={comparison.athleteA.stats.goals} valueB={comparison.athleteB.stats.goals} accent />
+                    <StatBox label="Assists" valueA={comparison.athleteA.stats.assists} valueB={comparison.athleteB.stats.assists} />
+                    <StatBox label="G+A per match" valueA={comparison.athleteA.stats.involvementsPerMatch} valueB={comparison.athleteB.stats.involvementsPerMatch} accent />
+                    <StatBox label="Penalties" valueA={comparison.athleteA.stats.penalties} valueB={comparison.athleteB.stats.penalties} />
+                    <StatBox label="Yellow cards" valueA={comparison.athleteA.stats.yellowCards} valueB={comparison.athleteB.stats.yellowCards} />
+                    <StatBox label="Red cards" valueA={comparison.athleteA.stats.redCards} valueB={comparison.athleteB.stats.redCards} />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </Layout>
   )

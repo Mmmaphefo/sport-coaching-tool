@@ -1,464 +1,407 @@
+// AI assistance: drafted with Claude (Opus 5.5) via claude.ai; reviewed and tested by the project team.
+// Seasons (T17): named periods with their own record, per-match breakdown and
+// schedule, plus the schedule generator (T23) that spreads opponents across
+// the season and flags clashes without blocking them.
 import { useCallback, useEffect, useState } from 'react'
-import { useAuth } from '@clerk/clerk-react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '@clerk/clerk-react'
 import Layout from '../components/Layout'
-import { apiRequest, apiDownload } from '../lib/api'
+import Loader from '../components/Loader'
+import { apiRequest } from '../lib/api'
+import { useConfirm } from '../lib/confirm'
 import './Seasons.css'
 
-const emptySeasonForm = { name: '', start_date: '', end_date: '' }
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const STATUS_LABEL = { scheduled: 'Scheduled', live: 'Live', completed: 'Completed', cancelled: 'Cancelled', open: 'Open' }
+const RESULT_LABEL = { W: 'Won', D: 'Drew', L: 'Lost' }
 
-const emptyScheduleForm = {
-  opponents: '',
-  start_date: '',
-  interval_days: 7,
-  time: '15:00',
-  location: '',
-  alternate_venues: false,
+function formatDay(value) {
+  return new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-const resultBadge = { W: 'seasons-result-w', D: 'seasons-result-d', L: 'seasons-result-l' }
-
-function TotalsCards({ totals }) {
-  return (
-    <div className="stats-grid">
-      <div className="stats-card">
-        <span className="stats-value">{totals.played}</span>
-        <span className="stats-label">Played</span>
-      </div>
-      <div className="stats-card">
-        <span className="stats-value">{totals.wins}</span>
-        <span className="stats-label">Won</span>
-      </div>
-      <div className="stats-card">
-        <span className="stats-value">{totals.draws}</span>
-        <span className="stats-label">Drawn</span>
-      </div>
-      <div className="stats-card">
-        <span className="stats-value">{totals.losses}</span>
-        <span className="stats-label">Lost</span>
-      </div>
-      <div className="stats-card">
-        <span className="stats-value">{totals.gf}</span>
-        <span className="stats-label">Goals for</span>
-      </div>
-      <div className="stats-card">
-        <span className="stats-value">{totals.ga}</span>
-        <span className="stats-label">Goals against</span>
-      </div>
-      <div className="stats-card">
-        <span className="stats-value">{totals.gd > 0 ? `+${totals.gd}` : totals.gd}</span>
-        <span className="stats-label">Difference</span>
-      </div>
-      <div className="stats-card">
-        <span className="stats-value">{totals.points}</span>
-        <span className="stats-label">Points</span>
-      </div>
-    </div>
-  )
-}
-
-function SeasonPage({ season, getToken, onDeleted }) {
-  const [summary, setSummary] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [schedule, setSchedule] = useState(emptyScheduleForm)
-  const [scheduleResult, setScheduleResult] = useState(null)
-  const [scheduleSaving, setScheduleSaving] = useState(false)
-  const [exporting, setExporting] = useState('')
-
-  const loadSummary = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const data = await apiRequest(`/api/seasons/${season.id}/summary`, { getToken })
-      setSummary(data)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season.id])
-
-  useEffect(() => {
-    setScheduleResult(null)
-    loadSummary()
-  }, [loadSummary])
-
-  async function handleExport(format) {
-    setExporting(format)
-    setError('')
-    try {
-      await apiDownload(`/api/seasons/${season.id}/report.${format}`, { getToken })
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setExporting('')
-    }
-  }
-
-  async function handleScheduleSubmit(e) {
-    e.preventDefault()
-    const opponents = schedule.opponents
-      .split('\n')
-      .map((o) => o.trim())
-      .filter(Boolean)
-    if (opponents.length === 0) {
-      setError('Add at least one opponent (one per line)')
-      return
-    }
-
-    setScheduleSaving(true)
-    setError('')
-    try {
-      const data = await apiRequest(`/api/seasons/${season.id}/schedule`, {
-        method: 'POST',
-        getToken,
-        body: {
-          opponents,
-          start_date: schedule.start_date,
-          interval_days: Number(schedule.interval_days) || 7,
-          time: schedule.time,
-          location: schedule.location.trim() || undefined,
-          alternate_venues: schedule.alternate_venues,
-        },
-      })
-      setScheduleResult(data)
-      setSchedule(emptyScheduleForm)
-      loadSummary()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setScheduleSaving(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!window.confirm(`Delete season "${season.name}"? Events keep their data but become untagged.`)) return
-    setError('')
-    try {
-      await apiRequest(`/api/seasons/${season.id}`, { method: 'DELETE', getToken })
-      onDeleted()
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  return (
-    <section className="seasons-detail">
-      {error && <div className="roster-error">{error}</div>}
-
-      <div className="seasons-detail-header">
-        <div>
-          <h2>{season.name}</h2>
-          <span className="seasons-period">
-            {season.start_date} → {season.end_date} · {season.event_count} tagged event
-            {season.event_count === 1 ? '' : 's'}
-          </span>
-        </div>
-        <div className="seasons-export-row">
-          <button className="btn btn-ghost" disabled={exporting !== ''} onClick={() => handleExport('csv')}>
-            {exporting === 'csv' ? 'Exporting...' : 'Export CSV'}
-          </button>
-          <button className="btn btn-ghost" disabled={exporting !== ''} onClick={() => handleExport('pdf')}>
-            {exporting === 'pdf' ? 'Exporting...' : 'Export PDF'}
-          </button>
-          <button className="btn btn-danger" onClick={handleDelete}>Delete</button>
-        </div>
-      </div>
-
-      {loading ? (
-        <p className="roster-status">Loading season summary...</p>
-      ) : summary ? (
-        <>
-          <TotalsCards totals={summary.totals} />
-
-          <h3 className="live-section-heading">Matches</h3>
-          {summary.matches.length === 0 ? (
-            <div className="roster-empty">
-              <p>No completed matches fall inside this season yet.</p>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="seasons-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Opponent</th>
-                    <th>Venue</th>
-                    <th>For</th>
-                    <th>Against</th>
-                    <th>Result</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.matches.map((m) => (
-                    <tr key={`${m.kind}-${m.refId}`}>
-                      <td>{m.date ? new Date(m.date).toLocaleDateString() : '—'}</td>
-                      <td>{m.opponent}</td>
-                      <td>{m.venue || ''}</td>
-                      <td>{m.gf}</td>
-                      <td>{m.ga}</td>
-                      <td>
-                        <span className={`seasons-result ${resultBadge[m.result] || ''}`}>{m.result}</span>
-                      </td>
-                      <td>
-                        {m.kind === 'event' && m.eventId ? (
-                          <Link to={`/events/${m.eventId}`}>View</Link>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      ) : null}
-
-      <section className="seasons-schedule">
-        <h3 className="live-section-heading">Generate a season schedule</h3>
-        <p className="seasons-hint">
-          Creates one match event per opponent, evenly spaced through the season. Any fixture that
-          overlaps an event already in your calendar gets flagged.
-        </p>
-        <form className="roster-form" onSubmit={handleScheduleSubmit}>
-          <div className="roster-form-grid">
-            <label className="roster-form-wide">
-              Opponents (one per line, in playing order)
-              <textarea
-                rows={4}
-                value={schedule.opponents}
-                onChange={(e) => setSchedule({ ...schedule, opponents: e.target.value })}
-                placeholder={'Riverside FC\nNorthgate United\nHarbour City'}
-              />
-            </label>
-            <label>
-              First match date
-              <input
-                type="date"
-                value={schedule.start_date}
-                onChange={(e) => setSchedule({ ...schedule, start_date: e.target.value })}
-              />
-            </label>
-            <label>
-              Kick-off time
-              <input
-                type="time"
-                value={schedule.time}
-                onChange={(e) => setSchedule({ ...schedule, time: e.target.value })}
-              />
-            </label>
-            <label>
-              Interval (days)
-              <input
-                type="number"
-                min="1"
-                value={schedule.interval_days}
-                onChange={(e) => setSchedule({ ...schedule, interval_days: e.target.value })}
-              />
-            </label>
-            <label>
-              Home venue
-              <input
-                type="text"
-                value={schedule.location}
-                onChange={(e) => setSchedule({ ...schedule, location: e.target.value })}
-                placeholder="Optional"
-              />
-            </label>
-            <label className="roster-form-checkbox">
-              <input
-                type="checkbox"
-                checked={schedule.alternate_venues}
-                onChange={(e) => setSchedule({ ...schedule, alternate_venues: e.target.checked })}
-              />
-              Alternate home/away
-            </label>
-          </div>
-          <div className="roster-form-actions">
-            <button type="submit" className="btn btn-gold" disabled={scheduleSaving}>
-              {scheduleSaving ? 'Generating...' : 'Generate schedule'}
-            </button>
-          </div>
-        </form>
-
-        {scheduleResult && (
-          <div className="seasons-schedule-result">
-            <p>
-              Created {scheduleResult.created_count} match event
-              {scheduleResult.created_count === 1 ? '' : 's'}.
-              {scheduleResult.generated_past_season_end && ' Note: the schedule runs past the end of the season.'}
-            </p>
-            {scheduleResult.clash_count > 0 && (
-              <div className="seasons-clash-warning">
-                <strong>⚠ {scheduleResult.clash_count} clash{scheduleResult.clash_count === 1 ? '' : 'es'} detected:</strong>
-                <ul>
-                  {scheduleResult.clashes.map((c) => (
-                    <li key={c.event_id}>
-                      vs {c.opponent} — overlaps{' '}
-                      {c.conflicts_with.map((x) => `${x.against} (${new Date(x.event_date).toLocaleString()})`).join(', ')}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <ul className="seasons-created-list">
-              {scheduleResult.events.map((e) => (
-                <li key={e.id}>
-                  vs {e.opponent} · {new Date(e.event_date).toLocaleString()}
-                  {e.location ? ` · ${e.location}` : ''} — <Link to={`/events/${e.id}`}>open</Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-    </section>
-  )
+function formatKickoff(value) {
+  const d = new Date(value)
+  const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  return `${day} · ${time}`
 }
 
 function Seasons() {
   const { getToken } = useAuth()
-
+  const confirm = useConfirm()
   const [seasons, setSeasons] = useState(null)
-  const [selectedId, setSelectedId] = useState(null)
-  const [form, setForm] = useState(emptySeasonForm)
-  const [saving, setSaving] = useState(false)
+  const [detail, setDetail] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [form, setForm] = useState({ name: '', from: '', to: '' })
+  const [formError, setFormError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [gen, setGen] = useState({ opponents: '', first: '', time: '10:00', cadence: '7', weekday: '', duration: '90', location: '' })
+  const [plan, setPlan] = useState(null)
+  const [genError, setGenError] = useState('')
+  const [genBusy, setGenBusy] = useState(false)
 
-  const loadSeasons = useCallback(
-    async (preferredId) => {
-      try {
-        const data = await apiRequest('/api/seasons', { getToken })
-        setSeasons(data)
-        setSelectedId((current) => {
-          const wanted = preferredId ?? current
-          return data.some((s) => s.id === wanted) ? wanted : data[0]?.id ?? null
-        })
-      } catch (err) {
-        setError(err.message)
-        setSeasons([])
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
+  const fetchSeasons = useCallback(async () => {
+    try {
+      return await apiRequest('/api/seasons', { getToken })
+    } catch (err) {
+      setError(err.message)
+      return null
+    }
+  }, [getToken])
+
+  const fetchDetail = useCallback(async (id) => {
+    try {
+      return await apiRequest(`/api/seasons/${id}`, { getToken })
+    } catch (err) {
+      setError(err.message)
+      return null
+    }
+  }, [getToken])
 
   useEffect(() => {
-    loadSeasons()
-  }, [loadSeasons])
+    let cancelled = false
+    ;(async () => {
+      const list = await fetchSeasons()
+      if (cancelled) return
+      if (list) {
+        setSeasons(list)
+        // The newest season is the natural starting point.
+        if (list.length > 0) {
+          const first = await fetchDetail(list[0].id)
+          if (!cancelled && first) setDetail(first)
+        }
+      }
+      setLoading(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [fetchSeasons, fetchDetail])
 
-  async function handleCreate(e) {
+  async function createSeason(e) {
     e.preventDefault()
+    if (!form.name.trim() || !form.from || !form.to) {
+      setFormError('Give the season a name and both dates.')
+      return
+    }
     setSaving(true)
-    setError('')
+    setFormError('')
     try {
       const created = await apiRequest('/api/seasons', {
         method: 'POST',
+        body: { name: form.name.trim(), starts_on: form.from, ends_on: form.to },
         getToken,
-        body: { name: form.name.trim(), start_date: form.start_date, end_date: form.end_date },
       })
-      setForm(emptySeasonForm)
-      loadSeasons(created.id)
+      const list = await apiRequest('/api/seasons', { getToken })
+      setSeasons(list)
+      setDetail(await apiRequest(`/api/seasons/${created.id}`, { getToken }))
+      setForm({ name: '', from: '', to: '' })
     } catch (err) {
-      setError(err.message)
+      setFormError(err.message)
     } finally {
       setSaving(false)
     }
   }
 
-  if (seasons === null) {
-    return (
-      <Layout>
-        <p className="roster-status">Loading seasons...</p>
-      </Layout>
-    )
+  async function selectSeason(id) {
+    setPlan(null)
+    setGenError('')
+    setError('')
+    try {
+      setDetail(await apiRequest(`/api/seasons/${id}`, { getToken }))
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
-  const selected = seasons.find((s) => s.id === selectedId) || null
+  async function removeSeason(season) {
+    const proceed = await confirm({
+      title: `Delete "${season.name}"?`,
+      message: 'The season is removed, but its matches stay on the calendar — they just lose their season tag.',
+      confirmLabel: 'Delete season',
+    })
+    if (!proceed) return
+    try {
+      await apiRequest(`/api/seasons/${season.id}`, { method: 'DELETE', getToken })
+      const list = await apiRequest('/api/seasons', { getToken })
+      setSeasons(list)
+      if (String(detail?.season.id) === String(season.id)) {
+        setDetail(list.length > 0 ? await apiRequest(`/api/seasons/${list[0].id}`, { getToken }) : null)
+      }
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function generatorBody(dryRun) {
+    const opponents = gen.opponents.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
+    const body = {
+      opponents,
+      kickoff_time: gen.time,
+      cadence_days: Number(gen.cadence) || 7,
+      weekday: gen.weekday === '' ? null : Number(gen.weekday),
+      duration_minutes: Number(gen.duration) || 90,
+      location: gen.location.trim() || null,
+      dry_run: dryRun,
+    }
+    // Left empty, the server picks the season start (or tomorrow when the
+    // season is already underway) — sending a stale date would 400.
+    if (gen.first) body.first_kickoff = gen.first
+    return body
+  }
+
+  async function runSchedule(dryRun) {
+    setGenBusy(true)
+    setGenError('')
+    if (!dryRun) setPlan(null)
+    try {
+      const res = await apiRequest(`/api/seasons/${detail.season.id}/schedule`, {
+        method: 'POST',
+        body: generatorBody(dryRun),
+        getToken,
+      })
+      if (dryRun) {
+        setPlan(res)
+      } else {
+        setDetail(await apiRequest(`/api/seasons/${detail.season.id}`, { getToken }))
+        setSeasons(await apiRequest('/api/seasons', { getToken }))
+      }
+    } catch (err) {
+      setGenError(err.message)
+    } finally {
+      setGenBusy(false)
+    }
+  }
+
+  const s = detail?.summary
 
   return (
     <Layout>
-      <div className="roster-header">
-        <div>
-          <span className="dashboard-eyebrow">Seasons</span>
-          <h1>Season totals &amp; breakdowns</h1>
-          <p className="seasons-hint">
-            Tag matches to a season to track W/D/L and goals across its date range, generate
-            schedules, and export reports.
-          </p>
-        </div>
+      <div className="sn-page">
+        <header className="sn-head">
+          <h1>Seasons</h1>
+          <p>Named periods for your squad — each carries its own record, breakdown and schedule, and prints as a report.</p>
+        </header>
+
+        {error && <div className="sn-error" role="alert">{error}</div>}
+        {loading && <Loader label="Loading seasons..." />}
+
+        {seasons && (
+          <section className="sn-card" aria-labelledby="sn-list-title">
+            <h2 id="sn-list-title">Your seasons</h2>
+            {seasons.length === 0 ? (
+              <p className="sn-muted">No seasons yet — create one below to track a period and generate its schedule.</p>
+            ) : (
+              <div className="sn-table-wrap">
+                <table className="sn-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Season</th>
+                      <th scope="col">Dates</th>
+                      <th scope="col">Matches</th>
+                      <th scope="col">Played</th>
+                      <th scope="col"><span className="sr-only">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {seasons.map((season) => (
+                      <tr key={season.id} className={detail && String(detail.season.id) === String(season.id) ? 'sn-row-active' : ''}>
+                        <th scope="row">{season.name}</th>
+                        <td>{formatDay(season.starts_on)} – {formatDay(season.ends_on)}</td>
+                        <td>{season.event_count}</td>
+                        <td>{season.completed_count}</td>
+                        <td className="sn-row-actions">
+                          <button type="button" className="btn btn-ghost" onClick={() => selectSeason(season.id)}>View</button>
+                          <button type="button" className="btn btn-ghost sn-danger" onClick={() => removeSeason(season)}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="sn-card" aria-labelledby="sn-create-title">
+          <h2 id="sn-create-title">New season</h2>
+          <form className="sn-create-form" onSubmit={createSeason}>
+            <label className="sn-field">
+              Name
+              <input type="text" value={form.name} maxLength="100" placeholder="2026 Season"
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            </label>
+            <label className="sn-field">
+              From
+              <input type="date" value={form.from}
+                onChange={(e) => setForm((f) => ({ ...f, from: e.target.value }))} />
+            </label>
+            <label className="sn-field">
+              To
+              <input type="date" value={form.to}
+                onChange={(e) => setForm((f) => ({ ...f, to: e.target.value }))} />
+            </label>
+            <button type="submit" className="btn btn-gold" disabled={saving}>
+              {saving ? 'Creating...' : 'Create season'}
+            </button>
+          </form>
+          {formError && <div className="sn-error" role="alert">{formError}</div>}
+        </section>
+
+        {detail && (
+          <section className="sn-card sn-detail" aria-labelledby="sn-detail-title">
+            <div className="sn-detail-head">
+              <div>
+                <h2 id="sn-detail-title">{detail.season.name}</h2>
+                <p className="sn-muted">{formatDay(detail.season.starts_on)} – {formatDay(detail.season.ends_on)}</p>
+              </div>
+              <Link className="btn btn-ghost" to={`/reports?season=${detail.season.id}`}>Printable report</Link>
+            </div>
+
+            <dl className="sn-record">
+              <div><dt>Played</dt><dd>{s.played}</dd></div>
+              <div><dt>Won, drawn, lost</dt><dd>{s.wins}–{s.draws}–{s.losses}</dd></div>
+              <div><dt>Goals for and against</dt><dd>{s.goalsFor}–{s.goalsAgainst}</dd></div>
+              <div><dt>Clean sheets</dt><dd>{s.cleanSheets}</dd></div>
+            </dl>
+
+            <h3>Results</h3>
+            {detail.matches.length === 0 ? (
+              <p className="sn-muted">No finished matches in this season yet — the breakdown appears as matches complete.</p>
+            ) : (
+              <div className="sn-table-wrap">
+                <table className="sn-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Opponent</th>
+                      <th scope="col">Score</th>
+                      <th scope="col">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.matches.map((m) => (
+                      <tr key={`${m.kind}-${m.id}`}>
+                        <td>{formatDay(m.date)}</td>
+                        <th scope="row">{m.opponent}</th>
+                        <td>{m.us.goals}–{m.them.goals}</td>
+                        <td><span className={`sn-result sn-result-${m.result}`}>{RESULT_LABEL[m.result]}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <h3>Schedule</h3>
+            {detail.schedule.length === 0 ? (
+              <p className="sn-muted">Nothing scheduled for this season yet — use the generator below.</p>
+            ) : (
+              <div className="sn-table-wrap">
+                <table className="sn-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Kickoff</th>
+                      <th scope="col">Opponent</th>
+                      <th scope="col">Status</th>
+                      <th scope="col"><span className="sr-only">Open</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.schedule.map((e) => (
+                      <tr key={e.id}>
+                        <td>{formatKickoff(e.event_date)}</td>
+                        <th scope="row">{e.opponent}</th>
+                        <td>
+                          <span className={`sn-status sn-status-${e.status}`}>{STATUS_LABEL[e.status] || e.status}</span>
+                          {e.clashes && e.clashes.length > 0 && (
+                            <span className="sn-clash" title={`Overlaps ${e.clashes.length} other item${e.clashes.length === 1 ? '' : 's'} on the calendar`}>
+                              Clash
+                            </span>
+                          )}
+                        </td>
+                        <td><Link to={`/events/${e.id}`}>Open</Link></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <h3>Generate the schedule</h3>
+            <p className="sn-muted">One match per opponent, spread across the season. Clashes with the existing calendar are flagged, never blocked.</p>
+            <form className="sn-gen" onSubmit={(e) => { e.preventDefault(); runSchedule(true) }}>
+              <label className="sn-field sn-field-wide">
+                Opponents (one per line)
+                <textarea rows="3" value={gen.opponents} placeholder={'Rovers\nUnited\nCity'}
+                  onChange={(e) => setGen((g) => ({ ...g, opponents: e.target.value }))} />
+              </label>
+              <label className="sn-field">
+                First kickoff
+                <input type="date" value={gen.first} placeholder={detail.season.starts_on}
+                  onChange={(e) => setGen((g) => ({ ...g, first: e.target.value }))} />
+              </label>
+              <label className="sn-field">
+                Kickoff time
+                <input type="time" value={gen.time}
+                  onChange={(e) => setGen((g) => ({ ...g, time: e.target.value }))} />
+              </label>
+              <label className="sn-field">
+                Days between matches
+                <input type="number" min="1" max="28" value={gen.cadence}
+                  onChange={(e) => setGen((g) => ({ ...g, cadence: e.target.value }))} />
+              </label>
+              <label className="sn-field">
+                Day of the week
+                <select value={gen.weekday} onChange={(e) => setGen((g) => ({ ...g, weekday: e.target.value }))}>
+                  <option value="">Any</option>
+                  {WEEKDAYS.map((day, i) => (
+                    <option key={day} value={i}>{day}s</option>
+                  ))}
+                </select>
+              </label>
+              <label className="sn-field">
+                Duration (minutes)
+                <input type="number" min="15" max="300" value={gen.duration}
+                  onChange={(e) => setGen((g) => ({ ...g, duration: e.target.value }))} />
+              </label>
+              <label className="sn-field sn-field-wide">
+                Venue
+                <input type="text" maxLength="200" value={gen.location} placeholder="Home Ground (optional)"
+                  onChange={(e) => setGen((g) => ({ ...g, location: e.target.value }))} />
+              </label>
+              <div className="sn-gen-actions">
+                <button type="submit" className="btn btn-ghost" disabled={genBusy}>Preview</button>
+                <button type="button" className="btn btn-gold" disabled={genBusy} onClick={() => runSchedule(false)}>
+                  Create schedule
+                </button>
+              </div>
+            </form>
+            {genError && <div className="sn-error" role="alert">{genError}</div>}
+
+            {plan && (
+              <div className="sn-plan">
+                <h4>Preview — {plan.planned.length} match{plan.planned.length === 1 ? '' : 'es'}, {plan.clash_count} with clash{plan.clash_count === 1 ? '' : 'es'}</h4>
+                <ul>
+                  {plan.planned.map((p) => (
+                    <li key={p.opponent} className={p.clashes.length > 0 ? 'sn-plan-clash' : ''}>
+                      <span className="sn-plan-when">{formatKickoff(p.event_date)}</span>
+                      <span className="sn-plan-who">vs {p.opponent}</span>
+                      {p.clashes.length > 0 ? (
+                        <span className="sn-plan-note">Clashes with {p.clashes.map((c) => c.label).join(', ')}</span>
+                      ) : (
+                        <span className="sn-plan-note sn-muted">No clash</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <p className="sn-muted">Create the schedule to add these matches to the calendar.</p>
+              </div>
+            )}
+          </section>
+        )}
       </div>
-
-      {error && <div className="roster-error">{error}</div>}
-
-      <form className="roster-form" onSubmit={handleCreate}>
-        <h3>New season</h3>
-        <div className="roster-form-grid">
-          <label>
-            Name
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="2026/27"
-              required
-            />
-          </label>
-          <label>
-            Starts
-            <input
-              type="date"
-              value={form.start_date}
-              onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-              required
-            />
-          </label>
-          <label>
-            Ends
-            <input
-              type="date"
-              value={form.end_date}
-              onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-              required
-            />
-          </label>
-        </div>
-        <div className="roster-form-actions">
-          <button type="submit" className="btn btn-gold" disabled={saving}>
-            {saving ? 'Creating...' : 'Create season'}
-          </button>
-        </div>
-      </form>
-
-      {seasons.length === 0 ? (
-        <div className="roster-empty">
-          <p>No seasons yet — create your first one above.</p>
-        </div>
-      ) : (
-        <>
-          <div className="seasons-tabs">
-            {seasons.map((s) => (
-              <button
-                key={s.id}
-                className={`seasons-tab ${s.id === selectedId ? 'seasons-tab-active' : ''}`}
-                onClick={() => setSelectedId(s.id)}
-              >
-                {s.name}
-              </button>
-            ))}
-          </div>
-          {selected && (
-            <SeasonPage
-              season={selected}
-              getToken={getToken}
-              onDeleted={() => loadSeasons(null)}
-            />
-          )}
-        </>
-      )}
     </Layout>
   )
 }

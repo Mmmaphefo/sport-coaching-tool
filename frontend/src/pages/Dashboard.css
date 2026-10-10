@@ -781,3 +781,100 @@
 [data-theme="dark"] .dash-invite-error {
   color: #e5737a;
 }
+
+/* Season-form trends (T18) */
+
+.dash-trend-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.dash-trend-dot {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--color-ink);
+  background: var(--color-silver);
+  transition: transform 0.15s ease;
+}
+
+.dash-trend-dot:hover {
+  transform: translateY(-2px);
+}
+
+.dash-trend-w {
+  background: var(--color-gold-deep);
+}
+
+.dash-trend-l {
+  background: #d98484;
+  color: #fff;
+}
+
+.dash-trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-height: 90px;
+  padding-top: 6px;
+}
+
+.dash-trend-col {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  flex: 1 1 0;
+  max-width: 44px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dash-trend-bar-track {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 80px;
+  flex: 1;
+  background: var(--color-line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.dash-trend-bar {
+  width: 100%;
+  transform-origin: bottom;
+  animation: dash-grow-y 0.5s ease;
+}
+
+.dash-trend-bar-for {
+  background: var(--color-gold-deep);
+}
+
+.dash-trend-bar-against {
+  background: var(--color-blue);
+}
+
+.dash-trend-record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 14px 0 4px;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.dash-trend-record strong {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--color-ink);
+  margin-right: 3px;
+}

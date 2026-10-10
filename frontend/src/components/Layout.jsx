@@ -49,14 +49,13 @@ function Layout({ children }) {
           {!isAthlete && navItem('/roster', 'Roster')}
           {isAthlete && athleteId && navItem(`/roster/${athleteId}`, 'My Stats')}
           {navItem('/compare', 'Compare')}
+          {navItem('/reports', 'Reports')}
           {navItem('/tactics', 'Tactics')}
           {navItem('/sessions', 'Sessions')}
           {navItem('/events', 'Events')}
-          {!isAthlete && navItem('/live', 'Live')}
           {!isAthlete && navItem('/seasons', 'Seasons')}
-          {navItem('/stats', 'Squad Stats')}
           {!isAthlete && navItem('/friendlies', 'Friendlies')}
-          {navItem('/leaderboard', 'Leaderboard')}
+          {!isAthlete && navItem('/live', 'Live')}
           {navItem('/settings', 'Settings')}
         </nav>
         <div className="app-sidebar-footer">

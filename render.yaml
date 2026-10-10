@@ -32,9 +32,16 @@ services:
       # invite/reminder email links (e.g. https://kickstat.pages.dev).
       - key: FRONTEND_URL
         sync: false
-      # Optional: without these, emails are skipped with a log line.
+      # Email (optional: without a provider, emails are skipped with a log line).
+      # BREVO_API_KEY takes priority over RESEND_API_KEY when both are set.
+      # Brevo sends to anyone once ONE sender address is verified in Brevo;
+      # Resend needs a verified domain to reach anyone but the account owner.
+      - key: BREVO_API_KEY
+        sync: false
       - key: RESEND_API_KEY
         sync: false
+      # Sender, e.g. "KickStat <team@gmail.com>". With Brevo it must be the
+      # verified sender address.
       - key: EMAIL_FROM
         sync: false
       - key: FOOTBALL_DATA_API_KEY

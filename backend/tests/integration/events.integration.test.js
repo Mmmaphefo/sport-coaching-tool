@@ -253,6 +253,101 @@ describe('US14 (integration) — edit or undo a log entry', () => {
   })
 })
 
+describe('T12/T8 (integration) — edit semantics and conflict codes', () => {
+  async function seedLiveLog() {
+    const event = await createEvent()
+    const athlete = await createAthlete()
+    await setEventLineup(event.id)
+    const created = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({ athlete_id: athlete.id, action_type: 'goal', is_scoring: true, minute: 10, notes: 'left foot' })
+    expect(created.status).toBe(201)
+    return { event, log: created.body }
+  }
+
+  test('present-flag edits: an explicit null clears notes while omitted fields stay', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const res = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ notes: null })
+
+    expect(res.status).toBe(200)
+    expect(res.body.notes).toBeNull()
+    expect(res.body.minute).toBe(10)
+  })
+
+  test('edited_at stamps only when a value actually changes', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const first = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 15 })
+    expect(first.status).toBe(200)
+    expect(first.body.edited_at).not.toBeNull()
+
+    // Same values again: nothing changed, so the stamp must not move.
+    const second = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 15, notes: 'left foot' })
+    expect(second.status).toBe(200)
+    expect(second.body.edited_at).toBe(first.body.edited_at)
+  })
+
+  test('a stale queued edit loses to the newer server version (last-writer-wins)', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const fresh = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 20, client_edited_at: new Date(Date.now() + 60_000).toISOString() })
+    expect(fresh.status).toBe(200)
+    expect(fresh.body.minute).toBe(20)
+    // The stamp is clamped to the server clock: an hour-fast client clock
+    // must not be able to shadow every later edit.
+    expect(Math.abs(new Date(fresh.body.edited_at).getTime() - Date.now())).toBeLessThan(10_000)
+
+    const stale = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 3, client_edited_at: new Date(Date.now() - 60_000).toISOString() })
+
+    expect(stale.status).toBe(200)
+    expect(stale.body.applied).toBe(false)
+    expect(stale.body.minute).toBe(20)
+
+    const stored = await pool.query('SELECT minute FROM log_entries WHERE id = $1', [log.id])
+    expect(stored.rows[0].minute).toBe(20)
+  })
+
+  test('editing a deleted entry is a 410, an unknown one a 404', async () => {
+    const { event, log } = await seedLiveLog()
+    await request(app).delete(`/api/events/${event.id}/logs/${log.id}`)
+
+    const gone = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 30 })
+    expect(gone.status).toBe(410)
+
+    const missing = await request(app)
+      .patch(`/api/events/${event.id}/logs/999999`)
+      .send({ minute: 30 })
+    expect(missing.status).toBe(404)
+  })
+
+  test('rejects invalid edits: empty action_type and out-of-range minute', async () => {
+    const { event, log } = await seedLiveLog()
+
+    const empty = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ action_type: '   ' })
+    expect(empty.status).toBe(400)
+
+    const minute = await request(app)
+      .patch(`/api/events/${event.id}/logs/${log.id}`)
+      .send({ minute: 400 })
+    expect(minute.status).toBe(400)
+  })
+})
+
 describe('US15 (integration) — final result and penalties', () => {
   test('AC: event detail aggregates real rows into a result + timeline', async () => {
     const event = await createEvent()
@@ -464,5 +559,82 @@ describe('League / tournament events', () => {
     expect(statsRes.body.topScorers[0]).toMatchObject({ athleteName: 'Prolific Striker', goals: 2 })
     expect(statsRes.body.topAssisters).toHaveLength(1)
     expect(statsRes.body.topAssisters[0]).toMatchObject({ athleteName: 'Creative Playmaker', assists: 1 })
+  })
+})
+
+// T5/T9: offline-queued logs carry the device they were logged on and the
+// instant the action happened. The timeline orders by occurred_at so a
+// replay that arrives after newer actions still lands where it happened.
+describe('T9/T5 (integration) — occurred_at ordering and device metadata', () => {
+  test('a late-arriving offline log keeps its place on the timeline', async () => {
+    const event = await createEvent()
+    const goalScorer = await createAthlete()
+    const cornerTaker = await createAthlete({ name: 'Sipho Dlamini', squad_number: 7 })
+    await setEventLineup(event.id)
+
+    // The corner happened first on the pitch, but its create queued offline
+    // and only reached the server after the goal.
+    const goal = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({
+        athlete_id: goalScorer.id,
+        action_type: 'goal',
+        is_scoring: true,
+        minute: 45,
+        occurred_at: '2026-10-10T15:05:00.000Z',
+      })
+    expect(goal.status).toBe(201)
+
+    const corner = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({
+        athlete_id: cornerTaker.id,
+        action_type: 'corner',
+        minute: 45,
+        occurred_at: '2026-10-10T15:00:00.000Z',
+        device_id: 'pitch-tablet-01',
+      })
+    expect(corner.status).toBe(201)
+
+    const logs = await request(app).get(`/api/events/${event.id}/logs`)
+    expect(logs.status).toBe(200)
+    // Same minute: the corner (occurred first) sorts before the goal even
+    // though its row was inserted last.
+    expect(logs.body.map((l) => l.id)).toEqual([corner.body.id, goal.body.id])
+  })
+
+  test('stores device_id (clamped to 64 characters) and occurred_at', async () => {
+    const event = await createEvent()
+    const athlete = await createAthlete()
+    await setEventLineup(event.id)
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({
+        athlete_id: athlete.id,
+        action_type: 'goal',
+        occurred_at: '2026-10-10T16:30:00.000Z',
+        device_id: 'd'.repeat(80),
+      })
+
+    expect(res.status).toBe(201)
+    expect(res.body.device_id).toBe('d'.repeat(64))
+    expect(new Date(res.body.occurred_at).toISOString()).toBe('2026-10-10T16:30:00.000Z')
+
+    const stored = await pool.query('SELECT device_id FROM log_entries WHERE id = $1', [res.body.id])
+    expect(stored.rows[0].device_id).toBe('d'.repeat(64))
+  })
+
+  test('rejects a malformed occurred_at instead of silently ignoring it', async () => {
+    const event = await createEvent()
+    const athlete = await createAthlete()
+    await setEventLineup(event.id)
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({ athlete_id: athlete.id, action_type: 'goal', occurred_at: 'last tuesday' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('occurred_at must be a valid date')
   })
 })

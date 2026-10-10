@@ -3,7 +3,7 @@ const crypto = require('crypto')
 const pool = require('../db')
 const { clerkClient } = require('@clerk/express')
 const { requireAuth, getAuth } = require('../middleware/auth')
-const { sendInviteEmail } = require('../lib/email')
+const { sendInviteEmail, publicEmailError } = require('../lib/email')
 
 const router = express.Router()
 
@@ -41,12 +41,13 @@ async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant
     // password from a new account creation cannot be recovered, so only the
     // link is re-shared here.
     const inviteLink = `${process.env.FRONTEND_URL || ''}/invite/${existing.rows[0].token}`
-    const emailSent = await sendInviteEmail({ to: email, role, inviteLink, squadName })
+    const { sent, error: emailError } = await sendInviteEmail({ to: email, role, inviteLink, squadName })
 
     return {
       inviteId: existing.rows[0].id,
       inviteLink,
-      emailSent,
+      emailSent: sent,
+      emailError: publicEmailError(emailError),
       resent: true,
     }
   }
@@ -79,14 +80,15 @@ async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant
   }
   const inviteLink = `${process.env.FRONTEND_URL || ''}/invite/${result.rows[0].token}`
 
-  const emailSent = await sendInviteEmail({ to: email, role, inviteLink, squadName, credentials })
+  const { sent, error: emailError } = await sendInviteEmail({ to: email, role, inviteLink, squadName, credentials })
 
   return {
     inviteId: result.rows[0].id,
     // Still returned so the coach has a manual fallback/confirmation — the
     // frontend no longer treats this as the primary way to deliver it.
     inviteLink,
-    emailSent,
+    emailSent: sent,
+    emailError: publicEmailError(emailError),
     credentials: credentials || null,
   }
 }
@@ -143,7 +145,15 @@ router.post('/', requireAuth(), async (req, res) => {
 // the squad/role/athlete row an invite was created for. The signed-in user's
 // email must match the invite email to prevent invite-link sharing.
 router.post('/:token/accept', requireAuth(), async (req, res) => {
-  const client = await pool.connect()
+  // Connecting can fail (database down or out of connections). That must be
+  // a JSON 503, not an exception escaping the handler.
+  let client
+  try {
+    client = await pool.connect()
+  } catch (err) {
+    console.error('Invite accept: no database connection:', err.message)
+    return res.status(503).json({ error: 'The service is temporarily unavailable. Please try again.' })
+  }
   try {
     const { userId: clerkId } = getAuth(req)
     const { token } = req.params

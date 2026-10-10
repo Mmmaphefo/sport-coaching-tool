@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Pitch from './Pitch'
 import { buildLineupPayload, defaultXiPositions, detectFormation } from '../lib/lineups'
 
@@ -28,11 +28,14 @@ function sortRoster(roster) {
 
 // The pre-match screen: pick the starting XI (and bench) for each team,
 // drag players around the pitch to shape the formation, then save.
+// `suggestions` is the backend's data-backed head start (RSVPs, injuries,
+// form, ratings) for the home side — pre-filled once, then fully editable.
 export default function LineupWizard({
   homeName,
   awayName = null,
   homeRoster,
   awayRoster,
+  suggestions = null,
   saving = false,
   onSave,
 }) {
@@ -42,6 +45,25 @@ export default function LineupWizard({
   const [awaySel, setAwaySel] = useState(() =>
     awayRoster ? autoFill(awayRoster, 'away') : { xi: new Map(), bench: new Set() }
   )
+  // Whether the coach has touched the home selection — after that the
+  // suggestion never overwrites their edits.
+  const [homeTouched, setHomeTouched] = useState(false)
+
+  // The suggestion seeds the home XI once, before any edit. It arrives
+  // defence-first, so it maps straight onto the default slot coordinates;
+  // the rest of the eligible squad benches.
+  useEffect(() => {
+    if (!suggestions?.xi?.length || homeTouched) return
+    const slots = defaultXiPositions('home')
+    const xi = new Map()
+    suggestions.xi.slice(0, MAX_XI).forEach((entry, i) => {
+      xi.set(entry.athlete_id, slots[Math.min(i, MAX_XI - 1)])
+    })
+    setHomeSel({
+      xi,
+      bench: new Set((suggestions.bench || []).map((entry) => entry.athlete_id)),
+    })
+  }, [suggestions, homeTouched])
 
   const activeSide = tab
   const sel = activeSide === 'home' ? homeSel : awaySel
@@ -51,6 +73,7 @@ export default function LineupWizard({
   const updateSel = (updater) => setSel((prev) => updater(prev))
 
   function toggleXi(athlete) {
+    if (activeSide === 'home') setHomeTouched(true)
     updateSel((prev) => {
       const xi = new Map(prev.xi)
       const bench = new Set(prev.bench)
@@ -68,6 +91,7 @@ export default function LineupWizard({
   }
 
   function toggleBench(athlete) {
+    if (activeSide === 'home') setHomeTouched(true)
     updateSel((prev) => {
       if (prev.xi.has(athlete.id)) return prev
       const bench = new Set(prev.bench)
@@ -78,6 +102,7 @@ export default function LineupWizard({
   }
 
   function handleMove(athleteId, side, x, y) {
+    if (side === 'home') setHomeTouched(true)
     const setter = side === 'home' ? setHomeSel : setAwaySel
     setter((prev) => {
       if (!prev.xi.has(athleteId)) return prev
@@ -131,6 +156,17 @@ export default function LineupWizard({
 
   const xiFull = sel.xi.size >= MAX_XI
 
+  // Why each home player is (or is not) suggested — shown only on the home
+  // tab, since suggestions never cover the away squad.
+  const suggestionInfo = suggestions && activeSide === 'home'
+    ? new Map([
+      ...(suggestions.xi || []),
+      ...(suggestions.bench || []),
+      ...(suggestions.excluded || []),
+    ].map((entry) => [entry.athlete_id, entry]))
+    : null
+  const excludedIds = new Set((suggestions?.excluded || []).map((entry) => entry.athlete_id))
+
   return (
     <div className="live-wizard">
       <div className="live-wizard-head">
@@ -140,6 +176,13 @@ export default function LineupWizard({
           formation. Everyone named is in the match-day squad; substitutes can
           only receive a card until they come on.
         </p>
+        {suggestions?.xi?.length > 0 && (
+          <p className="wz-suggest-note">
+            Your XI is pre-filled from RSVPs, injuries, recent form and player
+            ratings. Everything is still yours to change — players flagged in
+            red are not suggested, but you can pick them anyway.
+          </p>
+        )}
       </div>
 
       {needsAway && (
@@ -193,6 +236,13 @@ export default function LineupWizard({
                   {athlete.squad_number != null ? `#${athlete.squad_number} ` : ''}
                   {athlete.name}
                 </span>
+                {suggestionInfo?.has(athlete.id) && (
+                  <span
+                    className={`wz-chip-meta${excludedIds.has(athlete.id) ? ' is-out' : ''}`}
+                  >
+                    {suggestionInfo.get(athlete.id).reason}
+                  </span>
+                )}
                 <span className="wz-chip-actions">
                   <button
                     type="button"

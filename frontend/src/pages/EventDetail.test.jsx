@@ -124,20 +124,50 @@ const simpleMatchPayload = {
   timeline: [],
 }
 
-// Mirrors the GET /api/events/:id/summary envelope (buildMatchSummary).
-const summaryPayload = {
-  event_id: 7,
-  status: 'completed',
-  headline: 'KickStat FC 3-1 Rovers FC — Victory',
-  result: 'win',
-  gf: 3,
-  ga: 1,
-  narrative: "KickStat FC's goals came from Thabo Maseko (12') and Lerato Khoza (38'). Rovers FC replied on 71'.",
-  highlights: [
-    { minute: 12, kind: 'goal', text: "First goal: Thabo Maseko 12'" },
-    { minute: 71, kind: 'goal', text: "Final strike: Sipho Nkosi 71'" },
+// A completed 2-2 draw with goals on both sides: enough log for the
+// automatic post-match summary to wrap the match up.
+const finishedMatchPayload = {
+  event: {
+    id: 9,
+    event_type: 'match',
+    format: 'match',
+    opponent: 'United FC',
+    title: null,
+    status: 'completed',
+    event_date: '2026-09-12T18:00:00.000Z',
+    location: null,
+    duration_minutes: 90,
+  },
+  result: { squad: 2, opponent: 2 },
+  penalties: [],
+  timeline: [
+    { id: 201, athlete_id: 4, athlete_name: 'Sam Peters', action_type: 'goal', is_scoring: true, value: 1, minute: 12 },
+    { id: 202, athlete_id: null, athlete_name: null, action_type: 'goal', is_scoring: true, value: 1, minute: 30 },
+    { id: 203, athlete_id: 6, athlete_name: 'Alex Kim', action_type: 'goal', is_scoring: true, value: 1, minute: 55 },
+    { id: 204, athlete_id: null, athlete_name: null, action_type: 'goal', is_scoring: true, value: 1, minute: 88 },
   ],
-  stats: { goals: 3, yellowCards: 1, redCards: 0, penaltiesScored: 0, penaltiesMissed: 0 },
+}
+
+// A finished match with discipline entries: the penalties section mixes
+// named cards with opponent penalties (athlete_name null → "Opponent").
+const disciplineMatchPayload = {
+  event: {
+    id: 8,
+    event_type: 'match',
+    format: 'match',
+    opponent: 'Riverside FC',
+    title: null,
+    status: 'completed',
+    event_date: '2026-09-10T18:00:00.000Z',
+    location: null,
+    duration_minutes: 90,
+  },
+  result: { squad: 3, opponent: 1 },
+  penalties: [
+    { id: 501, minute: 12, action_type: 'yellow_card', athlete_name: 'Marcus Hale' },
+    { id: 502, minute: 67, action_type: 'penalty', athlete_name: null },
+  ],
+  timeline: [],
 }
 
 function renderAt(path) {
@@ -156,8 +186,6 @@ describe('EventDetail', () => {
     mocks.getToken.mockResolvedValue('test-token')
 
     mocks.apiRequest.mockImplementation((path) => {
-      // The summary endpoint must not be swallowed by the /api/events/7 prefix.
-      if (path.endsWith('/summary')) return Promise.resolve(summaryPayload)
       if (path.startsWith('/api/events/5')) return Promise.resolve(leaguePayload)
       if (path.startsWith('/api/events/6')) return Promise.resolve(openLeaguePayload)
       if (path.startsWith('/api/events/7')) return Promise.resolve(simpleMatchPayload)
@@ -229,5 +257,62 @@ describe('EventDetail', () => {
 
     expect(screen.getByRole('heading', { name: /Timeline/i })).toBeInTheDocument()
     expect(screen.getByText(/No actions logged yet\./i)).toBeInTheDocument()
+  })
+
+  it('lists penalties and cards under the result with readable action names', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/events/8')) return Promise.resolve(disciplineMatchPayload)
+      if (path.startsWith('/api/athletes')) return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    renderAt('/events/8')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Riverside FC/i })).toBeInTheDocument()
+    })
+
+    const section = document.querySelector('.event-penalties')
+    expect(section).not.toBeNull()
+    expect(within(section).getByRole('heading', { name: /Penalties & Cards/i })).toBeInTheDocument()
+
+    // Both entries: the card shows the player's name, the penalty without an
+    // athlete is credited to the opponent; raw action types read as words.
+    expect(within(section).getByText("12'")).toBeInTheDocument()
+    expect(within(section).getByText('yellow card')).toBeInTheDocument()
+    expect(within(section).getByText('Marcus Hale')).toBeInTheDocument()
+    expect(within(section).getByText("67'")).toBeInTheDocument()
+    expect(within(section).getByText('penalty')).toBeInTheDocument()
+    expect(within(section).getByText('Opponent')).toBeInTheDocument()
+  })
+
+  it('shows the automatic post-match summary on a completed match', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/events/9')) return Promise.resolve(finishedMatchPayload)
+      if (path.startsWith('/api/athletes')) return Promise.resolve([])
+      return Promise.resolve({})
+    })
+
+    renderAt('/events/9')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /United FC/i })).toBeInTheDocument()
+    })
+
+    // The wrap-up is already on the page — no button, no extra request.
+    const summary = document.querySelector('.event-summary')
+    expect(summary).not.toBeNull()
+    expect(within(summary).getByRole('heading', { name: /Post-match summary/i })).toBeInTheDocument()
+    expect(within(summary).getByText('Draw')).toBeInTheDocument()
+    expect(within(summary).getByText(/generated automatically at full time/)).toBeInTheDocument()
+
+    // Our scorers keep their own lines, opposition goals group under the
+    // opponent's name with every minute listed.
+    expect(within(summary).getByText('Sam Peters')).toBeInTheDocument()
+    expect(within(summary).getByText(/1 goal · 12'/)).toBeInTheDocument()
+    expect(within(summary).getByText('Alex Kim')).toBeInTheDocument()
+    expect(within(summary).getByText(/1 goal · 55'/)).toBeInTheDocument()
+    expect(within(summary).getByText('United FC')).toBeInTheDocument()
+    expect(within(summary).getByText(/2 goals · 30', 88'/)).toBeInTheDocument()
   })
 })

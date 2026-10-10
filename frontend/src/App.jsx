@@ -7,8 +7,12 @@ import Dashboard from './pages/Dashboard'
 import Roster from './pages/Roster'
 import AthleteStats from './pages/AthleteStats'
 import Compare from './pages/Compare'
+import SeasonReport from './pages/SeasonReport'
+import MatchReport from './pages/MatchReport'
 import TacticsBoard from './pages/TacticsBoard'
 import Sessions from './pages/Sessions'
+import Seasons from './pages/Seasons'
+import Friendlies from './pages/Friendlies'
 import Setup from './pages/Setup'
 import AccountSettings from './pages/AccountSettings'
 import InviteAccept from './pages/InviteAccept'
@@ -16,10 +20,6 @@ import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Live from './pages/Live'
 import LiveMatch from './pages/LiveMatch'
-import Seasons from './pages/Seasons'
-import SquadStats from './pages/SquadStats'
-import Friendlies from './pages/Friendlies'
-import Leaderboard from './pages/Leaderboard'
 import PublicLanding from './pages/PublicLanding'
 import PublicSquad from './pages/PublicSquad'
 import PublicSquadLink from './pages/PublicSquadLink'
@@ -109,6 +109,22 @@ function App() {
           }
         />
         <Route
+          path="/seasons"
+          element={
+            <OnboardingGuard>
+              <Seasons />
+            </OnboardingGuard>
+          }
+        />
+        <Route
+          path="/friendlies"
+          element={
+            <OnboardingGuard>
+              <Friendlies />
+            </OnboardingGuard>
+          }
+        />
+        <Route
           path="/live"
           element={
             <OnboardingGuard>
@@ -133,30 +149,6 @@ function App() {
           }
         />
         <Route
-          path="/seasons"
-          element={
-            <OnboardingGuard>
-              <Seasons />
-            </OnboardingGuard>
-          }
-        />
-        <Route
-          path="/stats"
-          element={
-            <OnboardingGuard>
-              <SquadStats />
-            </OnboardingGuard>
-          }
-        />
-        <Route
-          path="/friendlies"
-          element={
-            <OnboardingGuard>
-              <Friendlies />
-            </OnboardingGuard>
-          }
-        />
-        <Route
           path="/settings"
           element={
             <OnboardingGuard>
@@ -164,8 +156,23 @@ function App() {
             </OnboardingGuard>
           }
         />
+        <Route
+          path="/reports"
+          element={
+            <OnboardingGuard>
+              <SeasonReport />
+            </OnboardingGuard>
+          }
+        />
+        <Route
+          path="/reports/match/:kind/:id"
+          element={
+            <OnboardingGuard>
+              <MatchReport />
+            </OnboardingGuard>
+          }
+        />
         <Route path="/invite/:token" element={<InviteAccept />} />
-        <Route path="/leaderboard" element={<Leaderboard />} />
 
         {/* No OnboardingGuard, no auth — genuinely public */}
         <Route path="/public" element={<PublicLanding />} />

@@ -4,8 +4,6 @@
 
 A full-stack web application for sports coaches and assistants to manage squads, schedule events, log live match data, and run multi-team leagues and tournaments.
 
-![CI](https://sdpm.ms.wits.ac.za/bug-off/sport-coaching-tool/actions/workflows/ci.yml/badge.svg)
-
 ## Features
 
 ### Squad Management
@@ -45,6 +43,10 @@ A full-stack web application for sports coaches and assistants to manage squads,
 
 ### Coaching Tools (Sprint 3)
 - Athlete comparison page with BMI and form
+- Team vs opponents comparison over any period, optionally against a second period (e.g. this season against last), with a per-opponent record
+- Printable season and match reports (Print / Save as PDF) with CSV export of results, player totals and match timelines
+- Seasons: named periods with their own record, per-match breakdown and printable report, plus a schedule generator that spreads opponents across the season and flags clashes without blocking
+- Friendlies between squads: propose a match to any public squad, accept or decline the ones they send, and the accepted match lands on both calendars with clash warnings
 - Tactics board with saved frames and the sessions / drill library (filterable by tactical goals, age group, duration, and phase)
 - Ratings-weighted match simulation (Quick Sim / Simulate Match) for events and fixtures
 - Coach-only stat overrides with an audit trail, merged over derived stats
@@ -57,7 +59,7 @@ A full-stack web application for sports coaches and assistants to manage squads,
 ### Public Pages (Sprint 3)
 - Public squad pages and a public landing directory of squads with live events
 - Shareable private links with CSV roster export
-- Email reminders before events and invite emails, both sent via Resend
+- Email reminders before events and invite emails, both sent via Brevo
 
 ## Tech Stack
 
@@ -210,7 +212,19 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | PATCH / DELETE | `/api/athletes/:id/stats/override[/:statKey]` | Coach stat correction / revert |
 | PATCH / DELETE | `/api/athletes/:id` | Update or remove an athlete (coach only) |
 | GET | `/api/compare/athletes?a=&b=` | Side-by-side athlete comparison |
+| GET | `/api/compare/team?from=&to=[&vs_from=&vs_to=]` | Team vs opponents over a period, optionally against a second period |
+| GET | `/api/reports/season?from=&to=` | Season report: record, results, player totals, per-opponent record |
+| GET | `/api/reports/match/:kind/:id` | Match report for a regular match (`event`) or league fixture (`fixture`) |
+| GET | `/api/seasons` | Saved seasons with calendar counts |
+| POST | `/api/seasons` | Create a season (staff) |
+| GET | `/api/seasons/:id` | Season detail: record, per-match breakdown, schedule with clash flags |
+| PATCH / DELETE | `/api/seasons/:id` | Rename or resize a season / remove it (events stay on the calendar) |
+| POST | `/api/seasons/:id/schedule` | Generate the season's match schedule (`dry_run` preview) with advisory clash flags |
+| GET / POST | `/api/friendlies` | Friendlies involving my squad / propose a match to a public squad |
+| POST | `/api/friendlies/:id/accept` | Accept a proposal, creating the match on both calendars |
+| POST | `/api/friendlies/:id/decline` or `/api/friendlies/:id/cancel` | Decline with an optional reason, or withdraw an open proposal |
 | GET | `/api/dashboard/summary` | Dashboard summary (readiness, form, leaders) |
+| GET | `/api/dashboard/trends` | Squad form over time — completed matches, scores, results, season record |
 | GET / POST | `/api/events` | List or create events and leagues |
 | GET | `/api/events/clashes` | Pre-creation conflict check |
 | GET / PATCH / DELETE | `/api/events/:id` | Event detail / update / remove |
@@ -219,6 +233,7 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | POST | `/api/events/:id/join` | Join an open league/tournament |
 | GET | `/api/events/:id/teams` · `/fixtures` · `/standings` · `/stats` | League views |
 | PUT | `/api/events/:id/lineup` | Set starting XI + bench |
+| GET | `/api/events/:id/lineup/suggestions` | Suggested XI + bench from RSVPs, injuries, recent form and ratings |
 | POST | `/api/events/:id/simulate` | Ratings-weighted 90-minute script (Quick Sim / Simulate Match) |
 | GET / POST | `/api/events/:id/logs` | Read or log live actions (idempotent `client_id` replay) |
 | PATCH / DELETE | `/api/events/:id/logs/:logId` | Edit / undo a log entry |
@@ -227,6 +242,7 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | GET / PATCH | `/api/fixtures/:id` | Fixture detail / update |
 | GET | `/api/fixtures/:id/clashes` | Fixture conflict check |
 | PUT | `/api/fixtures/:id/lineup` | Set both teams' lineups |
+| GET | `/api/fixtures/:id/lineup/suggestions` | Lineup suggestions for the home side (RSVPs, injuries, form, ratings) |
 | POST | `/api/fixtures/:id/simulate` | Fixture simulation (home squad only) |
 | GET / POST | `/api/fixtures/:id/logs` | Read or log fixture actions |
 | PATCH / DELETE | `/api/fixtures/:id/logs/:logId` | Edit / undo a fixture log |
@@ -238,6 +254,7 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | GET / PATCH / DELETE | `/api/tactics/:id` | Read, update, or delete a tactic |
 | GET / POST | `/api/sessions[/:id]` | Drill library CRUD |
 | GET | `/api/public/squads` · `/api/public/squads/:id` | Public directory and squad pages (no auth) |
+| GET | `/api/public/leaderboard` | Cross-platform table of every public squad — completed matches and league fixtures (no auth) |
 | GET | `/api/public/links/:token[/export.csv]` | Private share link and CSV export (no auth) |
 | GET | `/api/weather?location=` or `?lat=&lng=` | Venue weather forecast |
 | POST | `/webhooks/clerk` | Clerk webhook (user lifecycle) |
@@ -259,12 +276,20 @@ is published to Cloudflare Pages via `wrangler`. Manual `wrangler pages deploy`
 is only needed for out-of-band fixes.
 
 > The Render free tier sleeps after ~15 min of inactivity; the first request
-> afterwards takes about a minute to wake up.
+> afterwards takes about a minute to wake up. The
+> [backend keepalive workflow](.gitea/workflows/backend-keepalive.yml) pings
+> `/api/health` every 10 minutes from Gitea Actions so the API stays awake —
+> scheduled workflows only fire from the default branch (it goes live when the
+> file merges to `main`) and only while a runner is online, so if the Actions
+> tab shows no keepalive runs, point any external pinger at the same URL
+> instead (a free cron-job.org job, or a crontab line like
+> `*/10 * * * * curl -fsS https://kickstat-api-i2rc.onrender.com/api/health`).
+> A failing ping turns the workflow red — doubling as a visible "API down" alarm.
 
 ### Deployment inventory
 
-Third-party services used by the app: **Clerk** (auth), **Resend** (invite and
-event-reminder emails), **Mapbox** (venue map basemap, address search and
+Third-party services used by the app: **Clerk** (auth), **Brevo** (invite and
+event-reminder emails; Resend is kept as a fallback), **Mapbox** (venue map basemap, address search and
 reverse geocoding - public token baked into the frontend bundle),
 **Open-Meteo** (venue weather, no key required) and the
 **EA FC player ratings dataset** (Hugging Face datasets-server, no key required —
@@ -291,8 +316,12 @@ Environment variables configured on the Render service: `DATABASE_URL` (Neon
 direct connection string — pooling **off**, no `-pooler` host, migrations break
 on the pooled URL), `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
 `CLERK_WEBHOOK_SECRET`, `FRONTEND_URL` (= https://kickstat.pages.dev, drives
-CORS), `RESEND_API_KEY` and `EMAIL_FROM` (invite and reminder emails — both
-channels run through Resend after Gmail SMTP proved unreliable on Render).
+CORS), `BREVO_API_KEY` and `EMAIL_FROM` (invite and reminder emails, sent
+through Brevo; `EMAIL_FROM` must be the verified Brevo sender). Email moved from
+Gmail SMTP to Resend because Render blocks SMTP ports, then from Resend to Brevo
+because Resend only reaches outside recipients from a verified domain, which the
+team does not own. `RESEND_API_KEY` is optional and only used when
+`BREVO_API_KEY` is unset. Full reasoning: docs site, Third-party → Brevo.
 
 Key deployment files in this repo:
 
@@ -303,6 +332,7 @@ Key deployment files in this repo:
 | `frontend/public/_redirects` | SPA fallback (`/* /index.html 200`) |
 | `wrangler.jsonc` | Cloudflare Pages config (`pages_build_output_dir: frontend/dist`) |
 | `.gitea/workflows/ci.yml` | CI pipeline: lint/tests + coverage for both apps, Postgres address probe, combined coverage dashboard publish, Deploy Production job |
+| `.gitea/workflows/backend-keepalive.yml` | Scheduled `/api/health` ping (every 10 min) that keeps the Render free tier from sleeping |
 
 Never push directly to the GitHub mirror — Gitea `main` is the single source of
 truth and CI keeps the mirror in sync.

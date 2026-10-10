@@ -66,8 +66,7 @@ jobs:
       # localhost:5433) and per-job bridge networks (service reachable by
       # container name at postgres:5433), so the probe step below discovers
       # the working address and exports DATABASE_URL for later steps.
-      # Postgres still listens on 5433 because 5432 is taken on the runner
-      # host by Gitea's own database.
+      # Postgres listens on 5432 (default) on the self-hosted runner;
 
     services:
       postgres:
@@ -76,9 +75,9 @@ jobs:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
           POSTGRES_DB: sport_coaching_test
-          PGPORT: "5433"
+          PGPORT: "5432"
         options: >-
-          --health-cmd "pg_isready -p 5433"
+          --health-cmd "pg_isready -p 5432"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -108,11 +107,11 @@ jobs:
           const { Client } = require("pg");
           const fs = require("fs");
           const candidates = [
-            "postgres:5433",
-            "localhost:5433",
-            "127.0.0.1:5433",
-            "172.17.0.1:5433",
-            "host.docker.internal:5433",
+            "postgres:5432",
+            "localhost:5432",
+            "127.0.0.1:5432",
+            "172.17.0.1:5432",
+            "host.docker.internal:5432",
           ];
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           (async () => {
@@ -329,6 +328,20 @@ jobs:
     # and only after lint and tests have passed.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Two pushes close together start two CI runs, and the OLDER one can
+    # finish last. It used to force-push its older commit to GitHub, rewinding
+    # main, and Render then auto-deployed the old backend (Oct 9: 869d8e0 went
+    # live, then the run for 7e181c8 finished and replaced it). Defences:
+    #  1. this concurrency group: one deploy at a time, newest wins (honoured
+    #     where the runner supports it, ignored elsewhere);
+    #  2. the "newest commit" check below, which is the real guarantee: a run
+    #     whose commit is no longer the tip of main deploys nothing;
+    #  3. a normal (never forced) push to GitHub, so main can't move backwards.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: true
+    env:
+      DEPLOY_SHA: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -337,7 +350,20 @@ jobs:
           # clone — GitHub rejects pushes from shallow repositories.
           fetch-depth: 0
 
+      - name: Skip if a newer commit is already on main
+        id: tip
+        run: |
+          git fetch --quiet origin main
+          latest="$(git rev-parse origin/main)"
+          if [ "$latest" != "$DEPLOY_SHA" ]; then
+            echo "::notice::main has moved on to $latest — not deploying the older $DEPLOY_SHA (the newer run deploys it)"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node
+        if: steps.tip.outputs.deploy == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -345,12 +371,13 @@ jobs:
       # Render auto-deploys the backend whenever the GitHub fork's main
       # advances, so syncing the commit there IS the backend deploy.
       #
-      # The mirror must always fast-forward from Gitea main. If someone pushes
-      # to the GitHub fork directly the histories diverge and this push is
-      # rejected — that once left the Render backend stuck on an old build for
-      # days (every new endpoint 404ed in production) because the failure was
-      # only a warning. It now fails the job loudly instead.
+      # Never force-push: a forced push from an older run is exactly what
+      # rewound production. If GitHub main already contains this commit (a
+      # newer run got there first) there is nothing to do. If GitHub has
+      # diverged (someone pushed to the fork directly), the push is rejected
+      # and the job fails loudly — fix by making the fork's main match Gitea.
       - name: Sync main to GitHub (triggers Render backend deploy)
+        if: steps.tip.outputs.deploy == 'true'
         env:
           # Named GH_PAT because Gitea forbids secrets starting with GITHUB_
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -361,26 +388,41 @@ jobs:
           fi
           git remote remove github 2>/dev/null || true
           git remote add github "https://x-access-token:${GH_PAT}@github.com/TasmiyaChoonara/sport-coaching-tool.git"
-          # Force push to ensure GitHub matches Gitea exactly
-          git push --force github HEAD:main
+          git fetch --quiet github main || true
+          if git rev-parse --verify --quiet github/main >/dev/null \
+             && git merge-base --is-ancestor "$DEPLOY_SHA" github/main; then
+            echo "GitHub main already contains $DEPLOY_SHA — nothing to push"
+            exit 0
+          fi
+          if ! git push github "$DEPLOY_SHA:refs/heads/main"; then
+            echo "::error::GitHub main has diverged from Gitea main, so the backend was NOT deployed. Make the fork's main match Gitea (never force-push an older commit over a newer one), then re-run this job."
+            exit 1
+          fi
 
       - name: Build frontend
+        if: steps.tip.outputs.deploy == 'true'
         working-directory: ./frontend
         run: |
           npm ci
           npm run build
 
+      # A failed frontend deploy now fails the job (it used to be a warning,
+      # which hid a site that silently stopped updating while CI stayed green).
       - name: Deploy frontend to Cloudflare Pages
+        if: steps.tip.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        # Deploy-stage failures warn instead of failing the job, matching the
-        # Netlify coverage step above: code is already verified by the
-        # lint/test jobs, so a deploy hiccup shouldn't turn CI red.
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "::warning::Cloudflare secrets not set — skipping frontend deploy"
-            exit 0
+            echo "::error::Cloudflare secrets not set — the frontend cannot be deployed"
+            exit 1
           fi
-          timeout 300 npx --yes wrangler pages deploy --branch=main \
-            || echo "::warning::Cloudflare Pages deploy failed — frontend not updated"
+          # Project and output directory come from wrangler.jsonc. The commit
+          # hash labels the deployment in the Cloudflare dashboard.
+          if ! timeout 600 npx --yes wrangler@4 pages deploy \
+               --project-name=kickstat --branch=main \
+               --commit-hash="$DEPLOY_SHA" --commit-dirty=true; then
+            echo "::error::Cloudflare Pages deploy failed or timed out — kickstat.pages.dev was NOT updated"
+            exit 1
+          fi
