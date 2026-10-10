@@ -11,6 +11,7 @@ const {
   applySubstitutionInTx,
 } = require('../lib/lineups');
 const { ensureRatings, squadFromRows, ratingsPayload } = require('../lib/ratings');
+const { buildLineupSuggestions } = require('../lib/lineupSuggestions');
 const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
@@ -236,6 +237,37 @@ router.put('/:id/lineup', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error saving fixture lineup:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/fixtures/:id/lineup/suggestions — the same suggestion engine as
+// simple events, scoped to the home side (the side this coach sets lineups
+// for). RSVPs are read from the fixture's league event, where the squad
+// confirms them. Read-only; staff only.
+router.get('/:id/lineup/suggestions', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+
+    const fixture = await getFixtureWithAccess(pool, req.params.id, squadId);
+    if (!fixture) {
+      return res.status(404).json({ error: 'Fixture not found' });
+    }
+    if (fixture.home_squad_id !== squadId) {
+      return res.status(403).json({ error: 'Only the home team can request lineup suggestions here' });
+    }
+
+    const suggestions = await buildLineupSuggestions(pool, {
+      eventId: fixture.event_id,
+      squadId: fixture.home_squad_id,
+    });
+    res.json(suggestions);
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Error building fixture lineup suggestions:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

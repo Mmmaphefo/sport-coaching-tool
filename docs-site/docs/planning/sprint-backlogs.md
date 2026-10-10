@@ -106,9 +106,10 @@ This page contains the sprint backlogs for Kickstat. Story points follow the sca
 | CMP-01 | Team comparison (T19) | Squad vs its opponents over a period, with per-opponent records and an optional second comparison period | Tasmiya | 5 |
 | RPT-01 | Exportable reports (T20) | Printable match and season reports with per-player totals, timeline and CSV download | Tasmiya | 5 |
 | TRE-01 | Squad form trends (T18) | Dashboard season-form chart — last 10 results, goals for/against bars and the season record | Lindo | 3 |
+| SUG-01 | Lineup suggestions (T21) | Suggested starting XI + bench from RSVPs, current injuries, recent form and player ratings; read-only endpoints plus a wizard pre-fill that never overwrites coach edits | Lindo | 5 |
 | FIX-01 | Bug fixes | Address demo feedback | All | 5 |
 | FIX-02 | Coverage push | Add missing tests to reach 75%+ | Kgotlelelo | 5 |
 | DEP-01 | Deploy frontend | Static site deployment | Kgethego | 2 |
 | DEP-02 | Deploy backend | Managed Node.js deployment | Mmaphefo | 3 |
 | DOC-01 | Final docs | Update all documentation | Tasmiya | 3 |
-|  |  | **Total** |  | **39** |
+|  |  | **Total** |  | **44** |

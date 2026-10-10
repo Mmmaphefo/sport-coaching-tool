@@ -544,3 +544,95 @@ describe('LiveMatch offline queue', () => {
     expect(screen.getByText('Squad Player 11')).toBeInTheDocument()
   }, 10000)
 })
+
+describe('LiveMatch lineup suggestions', () => {
+  beforeEach(() => {
+    mocks.apiRequest.mockReset()
+    mocks.getToken.mockResolvedValue('test-token')
+  })
+
+  it('pre-fills the wizard from the suggestions endpoint', async () => {
+    // A thirteenth player the suggestion engine has ruled out (injured).
+    const roster = [
+      ...athletes,
+      { id: 13, name: 'Injured Player', squad_number: 13, position: 'Striker', photo: null },
+    ]
+    // Deliberately different from the by-squad-number auto-fill, so a
+    // matching PUT proves the suggestion (not the fallback) was applied.
+    const suggestedXi = [roster[11], ...roster.slice(0, 10)]
+    const suggestions = {
+      formation: '4-4-2',
+      xi: suggestedXi.map((a) => ({
+        athlete_id: a.id,
+        reason: `${70 + (a.id % 10)} overall · available`,
+      })),
+      bench: [{ athlete_id: roster[10].id, reason: '71 overall · available' }],
+      excluded: [
+        {
+          athlete_id: roster[12].id,
+          name: roster[12].name,
+          reason: 'injured — expected back 2026-10-20',
+        },
+      ],
+    }
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/events/5') return Promise.resolve(eventDetail())
+      if (path === '/api/athletes') return Promise.resolve(roster)
+      if (path === '/api/events/5/lineup/suggestions') {
+        return Promise.resolve(suggestions)
+      }
+      return Promise.resolve({ lineups: lineupRows() })
+    })
+
+    renderLive('/live/5')
+
+    const note = await screen.findByText(
+      /pre-filled from RSVPs, injuries, recent form/i
+    )
+    expect(note).toBeInTheDocument()
+    expect(
+      screen.getByText(/injured — expected back 2026-10-20/)
+    ).toBeInTheDocument()
+
+    // The pre-fill only lands after an effect, so wait until the UI reflects
+    // it — player 12 starts instead of riding the bench — before saving.
+    await waitFor(() => {
+      const chip = screen.getByText('#12 Squad Player 12').closest('.wz-chip')
+      expect(chip.className).toContain('is-xi')
+    })
+
+    fireEvent.click(screen.getByText('Save lineups & start'))
+
+    await waitFor(() => {
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/api/events/5/lineup',
+        expect.objectContaining({ method: 'PUT' })
+      )
+    })
+    const putCall = mocks.apiRequest.mock.calls.find(
+      ([path]) => path === '/api/events/5/lineup'
+    )
+    const { body } = putCall[1]
+    const starters = body.lineups.filter((l) => l.is_starter).map((l) => l.athlete_id)
+    const bench = body.lineups.filter((l) => !l.is_starter).map((l) => l.athlete_id)
+    expect(starters).toEqual(suggestedXi.map((a) => a.id))
+    expect(bench).toEqual([roster[10].id])
+  }, 10000)
+
+  it('falls back to the plain auto-fill when suggestions fail', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path === '/api/events/5') return Promise.resolve(eventDetail())
+      if (path === '/api/athletes') return Promise.resolve(athletes)
+      if (path === '/api/events/5/lineup/suggestions') {
+        return Promise.reject(new Error('suggestions down'))
+      }
+      return Promise.resolve({})
+    })
+
+    renderLive('/live/5')
+
+    expect(await screen.findByText('Set the lineups')).toBeInTheDocument()
+    expect(screen.getByText('11/11')).toBeInTheDocument()
+    expect(screen.queryByText(/pre-filled from RSVPs/i)).not.toBeInTheDocument()
+  })
+})

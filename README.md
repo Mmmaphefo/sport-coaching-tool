@@ -225,6 +225,7 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | POST | `/api/events/:id/join` | Join an open league/tournament |
 | GET | `/api/events/:id/teams` · `/fixtures` · `/standings` · `/stats` | League views |
 | PUT | `/api/events/:id/lineup` | Set starting XI + bench |
+| GET | `/api/events/:id/lineup/suggestions` | Suggested XI + bench from RSVPs, injuries, recent form and ratings |
 | POST | `/api/events/:id/simulate` | Ratings-weighted 90-minute script (Quick Sim / Simulate Match) |
 | GET / POST | `/api/events/:id/logs` | Read or log live actions (idempotent `client_id` replay) |
 | PATCH / DELETE | `/api/events/:id/logs/:logId` | Edit / undo a log entry |
@@ -233,6 +234,7 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | GET / PATCH | `/api/fixtures/:id` | Fixture detail / update |
 | GET | `/api/fixtures/:id/clashes` | Fixture conflict check |
 | PUT | `/api/fixtures/:id/lineup` | Set both teams' lineups |
+| GET | `/api/fixtures/:id/lineup/suggestions` | Lineup suggestions for the home side (RSVPs, injuries, form, ratings) |
 | POST | `/api/fixtures/:id/simulate` | Fixture simulation (home squad only) |
 | GET / POST | `/api/fixtures/:id/logs` | Read or log fixture actions |
 | PATCH / DELETE | `/api/fixtures/:id/logs/:logId` | Edit / undo a fixture log |
