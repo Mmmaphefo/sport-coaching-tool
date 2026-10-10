@@ -1,3 +1,7 @@
+---
+sidebar_position: 6
+---
+
 # Missing-feature implementation — summary
 
 This adds code for the six gaps identified against the brief, using only

@@ -1,3 +1,7 @@
+---
+sidebar_position: 3
+---
+
 # Sprint 2 Master Action Plan
 
 ## Kickstat — Sport Coaching Tool (COMS3011A Project 2)
@@ -147,7 +151,7 @@ The brief defines three tiers:
 - Acceptance tests in Given-When-Then format
 - Docusaurus scaffold with project plan, architecture, automated testing docs
 
-**Files:** `README.md`, `ACCEPTANCE_TESTS.md`, `docs-site/docs/**/*.md`
+**Files:** `README.md`, `docs-site/docs/**/*.md`
 
 ### 2.3 Known Bugs
 
