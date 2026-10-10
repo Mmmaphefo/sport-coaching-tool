@@ -1,3 +1,7 @@
+---
+sidebar_position: 4
+---
+
 # Sprint 2 Full Compliance Checklist
 
 ## Kickstat — Sport Coaching Tool (COMS3011A Project 2)
@@ -294,7 +298,7 @@ Submit or link the following:
 
 ### Docs & Process
 - `README.md`
-- `ACCEPTANCE_TESTS.md`
+- `docs-site/docs/product/acceptance-tests.md`
 - `docs-site/docusaurus.config.js`
 - `docs-site/docs/planning/sprint-backlogs.md`
 - `docs-site/docs/meetings/sprint2-review.md`
