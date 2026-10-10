@@ -458,6 +458,21 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       }
     }
 
+    // Validation: a sent-off player takes no further part — any later log
+    // (goal, card, substitution) is refused. The red card log itself is the
+    // sending-off, so it is exempt above.
+    if (athlete_id && actionType !== 'red_card') {
+      const sentOff = await pool.query(
+        `SELECT 1 FROM log_entries
+         WHERE fixture_id = $1 AND athlete_id = $2 AND action_type = 'red_card' AND deleted_at IS NULL
+         LIMIT 1`,
+        [fixture.id, athlete_id]
+      );
+      if (sentOff.rows.length > 0) {
+        return res.status(400).json({ error: 'Player has been sent off and cannot take further part in this match' });
+      }
+    }
+
     // Validation: minute must be reasonable (0-120 for extra time)
     if (minute !== undefined && minute !== null) {
       const minuteNum = Number(minute);
@@ -479,6 +494,20 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       const lineupError = lineupCheckForLog(lineupRows, Number(athlete_id), actionType);
       if (lineupError) {
         return res.status(400).json({ error: lineupError });
+      }
+    }
+
+    // A sent-off player can neither come back on nor be replaced: the team
+    // plays the rest of the match a player short.
+    if (isSubstitutionSwap && substitute_athlete_id) {
+      const onSentOff = await pool.query(
+        `SELECT 1 FROM log_entries
+         WHERE fixture_id = $1 AND athlete_id = $2 AND action_type = 'red_card' AND deleted_at IS NULL
+         LIMIT 1`,
+        [fixture.id, Number(substitute_athlete_id)]
+      );
+      if (onSentOff.rows.length > 0) {
+        return res.status(400).json({ error: 'A sent-off player cannot take part in a substitution' });
       }
     }
 
@@ -515,6 +544,7 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
     const client = await pool.connect();
     let createdEntry;
     let substitutionError = null;
+    let autoRedCard = null;
     try {
       await client.query('BEGIN');
       const result = await client.query(
@@ -536,6 +566,33 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
         ]
       );
       createdEntry = result.rows[0];
+
+      // Second yellow in the same match: the laws of the game turn it into a
+      // red. The card is added to the red-card stats automatically, the
+      // player leaves the pitch for the bench, and nothing refills their
+      // place — no substitution may bring the squad back to full strength,
+      // and they cannot log anything further (sent-off gate above).
+      if (actionType === 'yellow_card' && athlete_id) {
+        const yellows = await client.query(
+          `SELECT COUNT(*)::int AS n FROM log_entries
+           WHERE fixture_id = $1 AND athlete_id = $2 AND action_type = 'yellow_card' AND deleted_at IS NULL`,
+          [fixture.id, athlete_id]
+        );
+        if (Number(yellows.rows[0].n) >= 2) {
+          const redResult = await client.query(
+            `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by)
+             VALUES ($1, $2, $3, 'red_card', false, 1, $4, 'Second yellow card - automatically sent off', $5)
+             RETURNING *`,
+            [fixture.event_id, fixture.id, athlete_id, minute ?? null, userId]
+          );
+          autoRedCard = redResult.rows[0];
+          await client.query(
+            `UPDATE match_lineups SET is_starter = false, pos_x = NULL, pos_y = NULL, updated_at = now()
+             WHERE fixture_id = $1 AND athlete_id = $2 AND is_starter = true`,
+            [fixture.id, athlete_id]
+          );
+        }
+      }
 
       // The lineup swap happens in the SAME transaction as its log entry
       // (see applySubstitutionInTx), after the insert: a duplicate replay
@@ -577,7 +634,9 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
     if (substitutionError) {
       return res.status(400).json({ error: substitutionError });
     }
-    res.status(201).json(createdEntry);
+    res.status(201).json(
+      autoRedCard ? { ...createdEntry, ejected: true, auto_red_card: autoRedCard } : createdEntry
+    );
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });

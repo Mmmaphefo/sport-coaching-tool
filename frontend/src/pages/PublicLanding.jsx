@@ -4,6 +4,15 @@ import './PublicLanding.css'
 
 const API_URL = import.meta.env.VITE_API_URL
 
+// 'Sat 12 Oct' style label for the upcoming list — one shared formatter so
+// every row tells the date the same way.
+function formatDay(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
 function IconBroadcast() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -148,6 +157,27 @@ function PublicLanding() {
           </section>
         )}
 
+        {data && data.upcoming && data.upcoming.length > 0 && (
+          <section className="pl-section" id="pl-upcoming">
+            <h2 className="pl-section-title">UPCOMING MATCHES</h2>
+            <div className="pl-upcoming-list">
+              {data.upcoming.map((item) => (
+                <div className="pl-upcoming-match" key={`${item.kind}-${item.id}`}>
+                  <span className="pl-upcoming-date">{formatDay(item.date)}</span>
+                  <span className="pl-upcoming-teams">
+                    {item.kind === 'match'
+                      ? (<>{item.squadName} <em>vs</em> {item.opponent}</>)
+                      : (<>{item.homeName} <em>vs</em> {item.awayName}</>)}
+                  </span>
+                  {item.kind === 'fixture' && item.league && (
+                    <span className="pl-upcoming-league">{item.league}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {board && board.length > 0 && (
           <section className="pl-section" id="pl-board">
             <h2 className="pl-section-title">PLATFORM TABLE</h2>
@@ -229,20 +259,29 @@ function PublicLanding() {
           ) : (
             <div className="pl-team-grid">
               {filteredSquads.map((s) => (
-                <Link to={`/public/${s.id}`} className="pl-team-card" key={s.id}>
-                  <div className="pl-team-avatar">
-                    {s.name
-                      .split(' ')
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .map((w) => w[0]?.toUpperCase())
-                      .join('')}
-                  </div>
-                  <div>
-                    <h3>{s.name}</h3>
-                    <p>{s.athlete_count} athlete{s.athlete_count === 1 ? '' : 's'}</p>
-                  </div>
-                </Link>
+                <div className="pl-team-card" key={s.id}>
+                  <Link to={`/public/${s.id}`} className="pl-team-main">
+                    <div className="pl-team-avatar">
+                      {s.name
+                        .split(' ')
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((w) => w[0]?.toUpperCase())
+                        .join('')}
+                    </div>
+                    <div>
+                      <h3>{s.name}</h3>
+                      <p>{s.athlete_count} athlete{s.athlete_count === 1 ? '' : 's'}</p>
+                    </div>
+                  </Link>
+                  <a
+                    className="pl-team-csv"
+                    href={`${API_URL}/api/public/squads/${s.id}/export.csv`}
+                    download
+                  >
+                    Download squad CSV
+                  </a>
+                </div>
               ))}
             </div>
           )}

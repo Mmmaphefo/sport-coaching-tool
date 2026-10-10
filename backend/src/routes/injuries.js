@@ -3,6 +3,7 @@ const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
 const { getOwnedSquadIdForStaff, getOwnedSquadIdForCoach, getOrCreateUserId } = require('./_squad');
 const { estimateReturn } = require('../lib/injury-estimator');
+const { injuryDateError } = require('../lib/soccerRules');
 
 const router = express.Router();
 
@@ -41,6 +42,19 @@ router.post('/', requireAuth(), async (req, res) => {
     const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
 
     await assertAthleteInSquad(athlete_id, squadId);
+
+    // Soccer realism rule (lib/soccerRules): an injury cannot predate the
+    // player's birth, nor land before their 15th birthday. A missing date of
+    // birth is a data gap, not a violation, so it skips the check.
+    const athleteRow = await pool.query(
+      'SELECT date_of_birth FROM athletes WHERE id = $1',
+      [athlete_id]
+    );
+    const dob = athleteRow.rows.length > 0 ? athleteRow.rows[0].date_of_birth : null;
+    const injuryError = injuryDateError({ dateOfBirth: dob, dateSustained: date_sustained });
+    if (injuryError) {
+      return res.status(400).json({ error: injuryError });
+    }
 
     const estimate = estimateReturn(description.trim(), date_sustained, sev);
 
@@ -88,6 +102,22 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     }
 
     const { description, date_sustained, severity, return_date, clear } = req.body;
+
+    // Same realism rule on edit: a moved injury date must still sit after
+    // the player's 15th birthday.
+    if (date_sustained) {
+      const athleteRow = await pool.query(
+        `SELECT a.date_of_birth FROM injuries i
+         JOIN athletes a ON a.id = i.athlete_id
+         WHERE i.id = $1`,
+        [req.params.id]
+      );
+      const dob = athleteRow.rows.length > 0 ? athleteRow.rows[0].date_of_birth : null;
+      const injuryError = injuryDateError({ dateOfBirth: dob, dateSustained: date_sustained });
+      if (injuryError) {
+        return res.status(400).json({ error: injuryError });
+      }
+    }
 
     const result = await pool.query(
       `UPDATE injuries
