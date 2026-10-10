@@ -145,7 +145,15 @@ router.post('/', requireAuth(), async (req, res) => {
 // the squad/role/athlete row an invite was created for. The signed-in user's
 // email must match the invite email to prevent invite-link sharing.
 router.post('/:token/accept', requireAuth(), async (req, res) => {
-  const client = await pool.connect()
+  // Connecting can fail (database down or out of connections). That must be
+  // a JSON 503, not an exception escaping the handler.
+  let client
+  try {
+    client = await pool.connect()
+  } catch (err) {
+    console.error('Invite accept: no database connection:', err.message)
+    return res.status(503).json({ error: 'The service is temporarily unavailable. Please try again.' })
+  }
   try {
     const { userId: clerkId } = getAuth(req)
     const { token } = req.params

@@ -1,6 +1,6 @@
 // AI assistance: drafted with Claude (Opus 5.5) via claude.ai; reviewed and tested by the project team.
-import { describe, it, expect } from 'vitest'
-import { csvCell, toCsv, slug } from './csv'
+import { describe, it, expect, vi } from 'vitest'
+import { csvCell, toCsv, slug, downloadCsv } from './csv'
 
 describe('csv', () => {
   it('quotes commas, quotes and newlines', () => {
@@ -20,5 +20,30 @@ describe('csv', () => {
   it('makes file-name slugs', () => {
     expect(slug('Wits FC  U19!')).toBe('wits-fc-u19')
     expect(slug('')).toBe('report')
+  })
+
+  it('downloads the CSV as a UTF-8 file with the given name, then cleans up', async () => {
+    vi.useFakeTimers()
+    const created = vi.fn(() => 'blob:report')
+    const revoked = vi.fn()
+    Object.assign(URL, { createObjectURL: created, revokeObjectURL: revoked })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    downloadCsv('season.csv', 'a,b\r\n1,2')
+
+    const blob = created.mock.calls[0][0]
+    expect(blob.type).toBe('text/csv;charset=utf-8')
+    // Read raw bytes: blob.text() silently drops a leading byte-order mark.
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+    expect(new TextDecoder().decode(bytes.slice(3))).toBe('a,b\r\n1,2')
+    const link = click.mock.contexts[0]
+    expect(link.download).toBe('season.csv')
+    expect(link.getAttribute('href')).toBe('blob:report')
+    expect(document.querySelector('a[download]')).toBeNull()
+    vi.advanceTimersByTime(1000)
+    expect(revoked).toHaveBeenCalledWith('blob:report')
+    click.mockRestore()
+    vi.useRealTimers()
   })
 })

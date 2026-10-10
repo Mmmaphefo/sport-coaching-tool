@@ -22,7 +22,7 @@ router.get('/', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message })
     }
     console.error('GET /api/tactics error:', err)
-    res.status(500).json({ error: `Failed to load tactics: ${err.message}` })
+    res.status(500).json({ error: 'Failed to load tactics' })
   }
 })
 
@@ -72,7 +72,7 @@ router.post('/', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message })
     }
     console.error('POST /api/tactics error:', err)
-    res.status(500).json({ error: `Failed to create tactic: ${err.message}` })
+    res.status(500).json({ error: 'Failed to create tactic' })
   }
 })
 

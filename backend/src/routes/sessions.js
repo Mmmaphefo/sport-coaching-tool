@@ -40,7 +40,7 @@ router.get('/', requireAuth(), async (req, res) => {
     res.json(result.rows)
   } catch (err) {
     console.error('GET /api/sessions error:', err)
-    res.status(500).json({ error: `Failed to load drills: ${err.message}` })
+    res.status(500).json({ error: 'Failed to load drills' })
   }
 })
 
@@ -71,7 +71,7 @@ router.post('/', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message })
     }
     console.error('POST /api/sessions error:', err)
-    res.status(500).json({ error: `Failed to create drill: ${err.message}` })
+    res.status(500).json({ error: 'Failed to create drill' })
   }
 })
 
@@ -105,7 +105,7 @@ router.patch('/:id', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message })
     }
     console.error('PATCH /api/sessions/:id error:', err)
-    res.status(500).json({ error: `Failed to update drill: ${err.message}` })
+    res.status(500).json({ error: 'Failed to update drill' })
   }
 })
 
@@ -127,7 +127,7 @@ router.delete('/:id', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message })
     }
     console.error('DELETE /api/sessions/:id error:', err)
-    res.status(500).json({ error: `Failed to delete drill: ${err.message}` })
+    res.status(500).json({ error: 'Failed to delete drill' })
   }
 })
 

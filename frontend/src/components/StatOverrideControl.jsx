@@ -13,8 +13,10 @@ export default function StatOverrideControl({ athleteId, statKey, override, getT
   const [error, setError] = useState('')
 
   async function save() {
+    // An empty box is not 0: Number('') is 0, which used to silently save a
+    // zero when a coach cleared the field and clicked Save.
     const value = Number(draft)
-    if (!Number.isInteger(value) || value < 0) {
+    if (String(draft).trim() === '' || !Number.isInteger(value) || value < 0) {
       setError('Enter a whole number, 0 or more')
       return
     }

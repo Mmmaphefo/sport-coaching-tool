@@ -571,7 +571,7 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error creating fixture log entry:', err);
-    res.status(500).json({ error: 'Server error', detail: err.message });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
