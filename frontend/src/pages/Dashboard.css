@@ -77,6 +77,132 @@
 /* ---------------------------------------------------------------------------
    Live match card — dark panel shown while an event/fixture is live
 --------------------------------------------------------------------------- */
+.dash-live-mine-tag {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.dash-live-others {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 24px;
+  margin-bottom: 20px;
+  background: var(--color-ink-fixed);
+  border: 1px solid var(--color-ink-fixed);
+  border-left: 5px solid var(--color-blue);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  color: var(--color-pitch-fixed);
+}
+
+.dash-live-others-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-blue);
+}
+
+.dash-live-others-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dash-live-others-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.dash-live-others-team {
+  flex: 1;
+  min-width: 90px;
+}
+
+.dash-live-others-row .dash-live-others-team:last-child {
+  text-align: right;
+}
+
+.dash-live-others-score {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.dash-upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 24px;
+  margin-bottom: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-chalk);
+}
+
+.dash-upcoming-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-fixed);
+  opacity: 0.7;
+}
+
+.dash-upcoming-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.dash-upcoming-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm, 6px);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.dash-upcoming-item:hover {
+  border-color: var(--color-gold);
+  transform: translateY(-1px);
+}
+
+.dash-upcoming-date {
+  font-family: var(--font-display);
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--color-gold);
+}
+
+.dash-upcoming-label {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-upcoming-league {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
 .dash-live-card {
   display: flex;
   flex-direction: column;

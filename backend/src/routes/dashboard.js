@@ -21,6 +21,41 @@ function bucketPosition(position) {
   return 'Other';
 }
 
+// Live score for a simple event: the squad's goals are logged with an
+// athlete, the opponent's with a NULL one (fixtureless logs only).
+async function computeEventScore(eventId) {
+  const result = await pool.query(
+    `SELECT is_scoring, athlete_id, value FROM log_entries
+     WHERE event_id = $1 AND fixture_id IS NULL AND deleted_at IS NULL`,
+    [eventId]
+  );
+  const squadScore = result.rows
+    .filter((l) => l.is_scoring && l.athlete_id !== null)
+    .reduce((s, l) => s + l.value, 0);
+  const opponentScore = result.rows
+    .filter((l) => l.is_scoring && l.athlete_id === null)
+    .reduce((s, l) => s + l.value, 0);
+  return { squadScore, opponentScore };
+}
+
+// Live score for a fixture: goals are attributed by the scorer's squad.
+async function computeFixtureScore(fixtureId, homeSquadId, awaySquadId) {
+  const result = await pool.query(
+    `SELECT l.is_scoring, l.value, a.squad_id AS athlete_squad_id
+     FROM log_entries l
+     LEFT JOIN athletes a ON a.id = l.athlete_id
+     WHERE l.fixture_id = $1 AND l.deleted_at IS NULL`,
+    [fixtureId]
+  );
+  const homeScore = result.rows
+    .filter((l) => l.is_scoring && l.athlete_squad_id === homeSquadId)
+    .reduce((s, l) => s + l.value, 0);
+  const awayScore = result.rows
+    .filter((l) => l.is_scoring && l.athlete_squad_id === awaySquadId)
+    .reduce((s, l) => s + l.value, 0);
+  return { homeScore, awayScore };
+}
+
 router.get('/summary', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
@@ -209,7 +244,111 @@ router.get('/summary', requireAuth(), async (req, res) => {
       }
     }
 
-    // ---- Next upcoming event ----
+    // ---- Other live matches: every squad's live simple match or fixture
+    // that this squad is not part of (that one is liveEvent above) — the
+    // dashboard shows the whole site's football, not just its own. Same
+    // shape as the public landing's live list, so both tell one story.
+    const otherLiveEventsResult = await pool.query(
+      `SELECT e.id, e.opponent, e.title, s.name AS squad_name
+       FROM events e
+       JOIN squads s ON s.id = e.squad_id
+       WHERE e.status = 'live' AND e.squad_id <> $1
+         AND e.format NOT IN ('league', 'tournament')
+       ORDER BY e.started_at DESC NULLS LAST
+       LIMIT 10`,
+      [squadId]
+    );
+    const otherLiveFixturesResult = await pool.query(
+      `SELECT f.id, f.home_squad_id, f.away_squad_id,
+              home.name AS home_name, away.name AS away_name,
+              e.title AS league_title
+       FROM fixtures f
+       JOIN squads home ON home.id = f.home_squad_id
+       JOIN squads away ON away.id = f.away_squad_id
+       JOIN events e ON e.id = f.event_id
+       WHERE f.status = 'live'
+         AND f.home_squad_id <> $1 AND f.away_squad_id <> $1
+       ORDER BY f.started_at DESC NULLS LAST
+       LIMIT 10`,
+      [squadId]
+    );
+
+    const otherLive = [
+      ...(await Promise.all(
+        otherLiveEventsResult.rows.map(async (ev) => ({
+          kind: 'match',
+          id: ev.id,
+          squadName: ev.squad_name,
+          opponent: ev.opponent || ev.title || 'Opponent',
+          ...(await computeEventScore(ev.id)),
+        }))
+      )),
+      ...(await Promise.all(
+        otherLiveFixturesResult.rows.map(async (fx) => ({
+          kind: 'fixture',
+          id: fx.id,
+          homeName: fx.home_name,
+          awayName: fx.away_name,
+          league: fx.league_title,
+          ...(await computeFixtureScore(fx.id, fx.home_squad_id, fx.away_squad_id)),
+        }))
+      )),
+    ];
+
+    // ---- Upcoming schedule: at most six future commitments — the squad's
+    // own simple matches and events plus the fixtures of any league or
+    // tournament it has joined — so the dashboard shows the whole runway,
+    // not just the next date. League/tournament container events are
+    // skipped: their fixtures carry the real dates.
+    const upcomingEventsResult = await pool.query(
+      `SELECT id, opponent, title, event_date FROM events
+       WHERE squad_id = $1 AND status = 'scheduled'
+         AND format NOT IN ('league', 'tournament')
+         AND event_date > now()
+       ORDER BY event_date ASC
+       LIMIT 6`,
+      [squadId]
+    );
+    const upcomingFixturesResult = await pool.query(
+      `SELECT f.id, f.event_date,
+              home.name AS home_name, away.name AS away_name,
+              e.title AS league_title,
+              (f.home_squad_id = $1) AS is_home
+       FROM fixtures f
+       JOIN events e ON e.id = f.event_id
+       JOIN event_teams et ON et.event_id = f.event_id AND et.squad_id = $1
+       JOIN squads home ON home.id = f.home_squad_id
+       JOIN squads away ON away.id = f.away_squad_id
+       WHERE f.status = 'scheduled' AND f.event_date > now()
+       ORDER BY f.event_date ASC
+       LIMIT 6`,
+      [squadId]
+    );
+
+    const upcomingEvents = [
+      ...upcomingEventsResult.rows.map((ev) => ({
+        kind: 'event',
+        id: ev.id,
+        label: ev.opponent ? `vs ${ev.opponent}` : (ev.title || 'Match'),
+        date: ev.event_date,
+        league: null,
+        link: `/events/${ev.id}`,
+      })),
+      ...upcomingFixturesResult.rows.map((fx) => ({
+        kind: 'fixture',
+        id: fx.id,
+        label: fx.is_home
+          ? `vs ${fx.away_name} (home)`
+          : `at ${fx.home_name} (away)`,
+        date: fx.event_date,
+        league: fx.league_title,
+        link: `/live/fixture/${fx.id}`,
+      })),
+    ]
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(0, 6);
+
+    // ---- Next upcoming event (kept for the hero card) ----
     const nextEventResult = await pool.query(
       `SELECT * FROM events
        WHERE squad_id = $1 AND status = 'scheduled' AND event_date > now()
@@ -220,6 +359,8 @@ router.get('/summary', requireAuth(), async (req, res) => {
     res.json({
       period,
       liveEvent,
+      otherLive,
+      upcomingEvents,
       squad: {
         totalRoster,
         readyCount,

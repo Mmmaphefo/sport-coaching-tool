@@ -8,8 +8,10 @@ const router = express.Router();
 //
 //   /squads, /squads/:id        -> DIRECTORY model. Any squad with
 //                                  is_public = true is browsable by anyone,
-//                                  including a landing-page list and
-//                                  whatever's live right now.
+//                                  including a landing-page list,
+//                                  whatever's live right now, an upcoming
+//                                  schedule, and a downloadable roster CSV
+//                                  per squad.
 //
 //   /links/:token, /links/:token/export.csv
 //                                -> PRIVATE-LINK model. A squad is invisible
@@ -111,7 +113,54 @@ router.get('/squads', async (req, res) => {
       )),
     ];
 
-    res.json({ squads: squads.rows, live });
+    // Upcoming schedule for the landing page: the next six future matches
+    // across every opted-in squad — simple matches plus fixtures involving a
+    // public side — so visitors see the whole runway, not just what's on now.
+    const upcomingEvents = await pool.query(
+      `SELECT e.id, e.opponent, e.title, e.event_date, s.name AS squad_name
+       FROM events e
+       JOIN squads s ON s.id = e.squad_id
+       WHERE e.status = 'scheduled'
+         AND e.format NOT IN ('league', 'tournament')
+         AND e.event_date > now() AND s.is_public = true
+       ORDER BY e.event_date ASC
+       LIMIT 6`
+    );
+    const upcomingFixtures = await pool.query(
+      `SELECT f.id, f.event_date,
+              home.name AS home_name, away.name AS away_name,
+              e.title AS league_title
+       FROM fixtures f
+       JOIN squads home ON home.id = f.home_squad_id
+       JOIN squads away ON away.id = f.away_squad_id
+       JOIN events e ON e.id = f.event_id
+       WHERE f.status = 'scheduled' AND f.event_date > now()
+         AND (home.is_public = true OR away.is_public = true)
+       ORDER BY f.event_date ASC
+       LIMIT 6`
+    );
+
+    const upcoming = [
+      ...upcomingEvents.rows.map((e) => ({
+        kind: 'match',
+        id: e.id,
+        squadName: e.squad_name,
+        opponent: e.opponent || e.title || 'Opponent',
+        date: e.event_date,
+      })),
+      ...upcomingFixtures.rows.map((f) => ({
+        kind: 'fixture',
+        id: f.id,
+        homeName: f.home_name,
+        awayName: f.away_name,
+        league: f.league_title,
+        date: f.event_date,
+      })),
+    ]
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(0, 6);
+
+    res.json({ squads: squads.rows, live, upcoming });
   } catch (err) {
     console.error('Error fetching public squads:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -216,6 +265,44 @@ router.get('/squads/:id', async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching public squad page:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/public/squads/:id/export.csv — downloadable roster + stats report
+// for any squad opted into the directory. Same payload as the private-link
+// CSV (buildRosterReport), so the directory download and the private link
+// can never tell two different stories about the same squad.
+router.get('/squads/:id/export.csv', async (req, res) => {
+  try {
+    const squadResult = await pool.query(
+      'SELECT id, name FROM squads WHERE id = $1 AND is_public = true',
+      [req.params.id]
+    );
+    if (squadResult.rows.length === 0) {
+      return res.status(404).json({ error: 'This squad has not made a public page available' });
+    }
+    const squad = squadResult.rows[0];
+
+    const { roster } = await buildRosterReport(squad.id);
+
+    function csvEscape(value) {
+      const str = String(value ?? '');
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    }
+
+    const header = ['Name', 'Position', 'Squad #', 'Appearances', 'Goals', 'Assists', 'Yellow cards', 'Red cards'];
+    const rows = roster.map((a) => [
+      a.name, a.position || '', a.squadNumber ?? '', a.appearances, a.goals, a.assists, a.yellowCards, a.redCards,
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(csvEscape).join(',')).join('\r\n');
+
+    const filename = `${squad.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-roster.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('Error exporting public squad CSV:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

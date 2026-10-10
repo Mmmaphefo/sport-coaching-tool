@@ -98,6 +98,13 @@ function PublicSquad() {
             <span className="ps-record-label">Lost</span>
           </div>
         </div>
+        <a
+          className="ps-csv-link"
+          href={`${API_URL}/api/public/squads/${data.squad.id}/export.csv`}
+          download
+        >
+          Download squad CSV
+        </a>
       </div>
 
       <Link to="/public" className="ps-back">&larr; All squads</Link>

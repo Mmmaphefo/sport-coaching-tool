@@ -104,6 +104,22 @@
   gap: 16px;
 }
 
+.ps-csv-link {
+  align-self: center;
+  padding: 10px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  font-size: 13px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.ps-csv-link:hover {
+  border-color: var(--color-gold);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .ps-record-chip {
   background: rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-sm);

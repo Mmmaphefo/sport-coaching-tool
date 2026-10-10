@@ -145,13 +145,14 @@ function Dashboard() {
     loadTrends()
   }, [loadTrends])
 
-  // While a match is live, quietly re-poll the summary so the live-score
-  // card tracks goals as they are logged in the match centre.
+  // While any match is live (ours or elsewhere on the site), quietly
+  // re-poll the summary so the live-score cards track goals as they are
+  // logged in the match centre.
   useEffect(() => {
-    if (!data?.liveEvent) return undefined
+    if (!data?.liveEvent && !(data?.otherLive?.length > 0)) return undefined
     const poll = setInterval(() => load(true), 10000)
     return () => clearInterval(poll)
-  }, [data?.liveEvent, load])
+  }, [data?.liveEvent, data?.otherLive, load])
 
   // ---- Player view: derived personal data ----------------------------------
   // Everything is computed from the athlete stats payload's logs — the same
@@ -256,7 +257,7 @@ function Dashboard() {
     )
   }
 
-  const { squad, readinessTrend, positionAvailability, form, teamGoals, attackLeaders, nextEvent, liveEvent } = data
+  const { squad, readinessTrend, positionAvailability, form, teamGoals, attackLeaders, nextEvent, liveEvent, otherLive, upcomingEvents } = data
 
   // Season-form chart inputs (staff view): the last 10 completed matches,
   // oldest first, scaled to the busiest scoreline in that run.
@@ -335,6 +336,7 @@ function Dashboard() {
               <span className="dash-live-badge-dot" />
               Live now
             </span>
+            <span className="dash-live-mine-tag">My live</span>
             <span className="dash-live-title">{liveEvent.title}</span>
           </div>
           <div className="dash-live-score-row">
@@ -353,6 +355,51 @@ function Dashboard() {
               </Link>
             )}
             <span className="dash-live-hint">Score updates as goals are logged</span>
+          </div>
+        </div>
+      )}
+
+      {otherLive && otherLive.length > 0 && (
+        <div className="dash-live-others" data-testid="dash-other-live">
+          <span className="dash-live-others-title">
+            <span className="dash-live-badge-dot" />
+            Opponent live
+          </span>
+          <div className="dash-live-others-list">
+            {otherLive.map((m) => (
+              <div className="dash-live-others-row" key={`${m.kind}-${m.id}`}>
+                {m.kind === 'match' ? (
+                  <>
+                    <span className="dash-live-others-team">{m.squadName}</span>
+                    <span className="dash-live-others-score">{m.squadScore}–{m.opponentScore}</span>
+                    <span className="dash-live-others-team">{m.opponent}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="dash-live-others-team">{m.homeName}</span>
+                    <span className="dash-live-others-score">{m.homeScore}–{m.awayScore}</span>
+                    <span className="dash-live-others-team">{m.awayName}</span>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {upcomingEvents && upcomingEvents.length > 0 && (
+        <div className="dash-upcoming" data-testid="dash-upcoming">
+          <span className="dash-upcoming-title">Upcoming schedule</span>
+          <div className="dash-upcoming-list">
+            {upcomingEvents.map((item) => (
+              <Link to={item.link} className="dash-upcoming-item" key={`${item.kind}-${item.id}`}>
+                <span className="dash-upcoming-date">
+                  {new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                </span>
+                <span className="dash-upcoming-label">{item.label}</span>
+                {item.league && <span className="dash-upcoming-league">{item.league}</span>}
+              </Link>
+            ))}
           </div>
         </div>
       )}
