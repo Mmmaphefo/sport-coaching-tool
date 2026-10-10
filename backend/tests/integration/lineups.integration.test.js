@@ -140,6 +140,73 @@ async function createSimpleEvent() {
   return res.rows[0]
 }
 
+describe('fixture log edit semantics (T12/T8)', () => {
+  async function seedFixtureLog() {
+    const { fixtureId, homeAthletes } = await createLeague()
+    await setFixtureLineup(fixtureId)
+    const created = await request(app)
+      .post(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ athlete_id: homeAthletes[0].id, action_type: 'goal', is_scoring: true, minute: 12, notes: 'header' })
+    expect(created.status).toBe(201)
+    return { fixtureId, log: created.body }
+  }
+
+  test('present-flag edit clears a field and stamps edited_at', async () => {
+    const { fixtureId, log } = await seedFixtureLog()
+
+    const res = await request(app)
+      .patch(`/api/fixtures/${fixtureId}/logs/${log.id}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ notes: null })
+
+    expect(res.status).toBe(200)
+    expect(res.body.notes).toBeNull()
+    expect(res.body.minute).toBe(12)
+    expect(res.body.edited_at).not.toBeNull()
+  })
+
+  test('editing a deleted fixture log is a 410, an unknown one a 404', async () => {
+    const { fixtureId, log } = await seedFixtureLog()
+
+    await request(app)
+      .delete(`/api/fixtures/${fixtureId}/logs/${log.id}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+
+    const gone = await request(app)
+      .patch(`/api/fixtures/${fixtureId}/logs/${log.id}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ minute: 30 })
+    expect(gone.status).toBe(410)
+
+    const missing = await request(app)
+      .patch(`/api/fixtures/${fixtureId}/logs/999999`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ minute: 30 })
+    expect(missing.status).toBe(404)
+  })
+
+  test('a stale queued edit loses to the newer server version (last-writer-wins)', async () => {
+    const { fixtureId, log } = await seedFixtureLog()
+
+    const fresh = await request(app)
+      .patch(`/api/fixtures/${fixtureId}/logs/${log.id}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ minute: 22, client_edited_at: new Date(Date.now() + 60_000).toISOString() })
+    expect(fresh.status).toBe(200)
+    expect(Math.abs(new Date(fresh.body.edited_at).getTime() - Date.now())).toBeLessThan(10_000)
+
+    const stale = await request(app)
+      .patch(`/api/fixtures/${fixtureId}/logs/${log.id}`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({ minute: 4, client_edited_at: new Date(Date.now() - 60_000).toISOString() })
+
+    expect(stale.status).toBe(200)
+    expect(stale.body.applied).toBe(false)
+    expect(stale.body.minute).toBe(22)
+  })
+})
+
 describe('lineup gate', () => {
   test('logging is blocked until the starting lineups are set', async () => {
     const { fixtureId, homeAthletes } = await createLeague()
