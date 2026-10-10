@@ -15,6 +15,7 @@ const { buildLineupSuggestions } = require('../lib/lineupSuggestions');
 const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
+const { parseLogMeta } = require('../lib/logMeta');
 const { applyLogEdit } = require('../lib/logEdit');
 
 const router = express.Router();
@@ -46,7 +47,7 @@ async function getFixtureLogs(pool, fixtureId) {
      FROM log_entries l
      LEFT JOIN athletes a ON a.id = l.athlete_id
      WHERE l.fixture_id = $1 AND l.deleted_at IS NULL
-     ORDER BY l.minute NULLS LAST, l.logged_at`,
+     ORDER BY l.minute NULLS LAST, COALESCE(l.occurred_at, l.logged_at) ASC, l.id ASC`,
     [fixtureId]
   );
   return result.rows;
@@ -404,6 +405,14 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       }
     }
 
+    // T5/T9: device_id and occurred_at travel with offline-queued logs — the
+    // timeline orders by occurred_at (falling back to logged_at) so a replay
+    // that arrives late still slots in where it happened.
+    const meta = parseLogMeta(req.body);
+    if (meta.error) {
+      return res.status(400).json({ error: meta.error });
+    }
+
     if (fixture.status === 'cancelled') {
       return res.status(400).json({ error: 'Fixture is cancelled' });
     }
@@ -509,8 +518,8 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, client_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, client_id, device_id, occurred_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
         [
           fixture.event_id,
           fixture.id,
@@ -522,6 +531,8 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
           entryNotes,
           userId,
           clientId,
+          meta.deviceId,
+          meta.occurredAt,
         ]
       );
       createdEntry = result.rows[0];
@@ -539,9 +550,9 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
         await client.query('ROLLBACK');
       } else if (assistRow) {
         await client.query(
-          `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, related_log_id)
-           VALUES ($1, $2, $3, 'assist', false, 1, $4, NULL, $5, $6)`,
-          [fixture.event_id, fixture.id, Number(assist_athlete_id), minute ?? null, userId, createdEntry.id]
+          `INSERT INTO log_entries (event_id, fixture_id, athlete_id, action_type, is_scoring, value, minute, notes, logged_by, related_log_id, device_id, occurred_at)
+           VALUES ($1, $2, $3, 'assist', false, 1, $4, NULL, $5, $6, $7, $8)`,
+          [fixture.event_id, fixture.id, Number(assist_athlete_id), minute ?? null, userId, createdEntry.id, meta.deviceId, meta.occurredAt]
         );
       }
       if (!substitutionError) await client.query('COMMIT');

@@ -245,3 +245,46 @@ describe('US15/US16 — fixture detail and live logging', () => {
     expect(logs.body).toHaveLength(0)
   })
 })
+
+// T5/T9: the fixture side of the offline metadata contract — device_id and
+// occurred_at are stored, and the timeline sorts by when actions happened.
+describe('T5/T9 — offline log metadata on fixtures', () => {
+  test('stores device_id/occurred_at and orders same-minute logs by them', async () => {
+    const { fixtureId } = await createLeague()
+    const { home } = await setFixtureLineup(fixtureId)
+
+    const late = await request(app)
+      .post(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({
+        athlete_id: home[0].id,
+        action_type: 'goal',
+        is_scoring: true,
+        minute: 30,
+        occurred_at: '2026-10-10T17:10:00.000Z',
+        device_id: 'touchline-phone',
+      })
+    expect(late.status).toBe(201)
+    expect(late.body.device_id).toBe('touchline-phone')
+
+    const replayed = await request(app)
+      .post(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+      .send({
+        athlete_id: home[1].id,
+        action_type: 'corner',
+        minute: 30,
+        occurred_at: '2026-10-10T17:05:00.000Z',
+        device_id: 'touchline-phone',
+      })
+    expect(replayed.status).toBe(201)
+
+    const logs = await request(app)
+      .get(`/api/fixtures/${fixtureId}/logs`)
+      .set('x-test-clerk-user-id', 'test_clerk_user')
+
+    // Same minute: the replayed corner happened earlier, so it leads.
+    expect(logs.body.map((l) => l.id)).toEqual([replayed.body.id, late.body.id])
+    expect(logs.body[0].device_id).toBe('touchline-phone')
+  })
+})

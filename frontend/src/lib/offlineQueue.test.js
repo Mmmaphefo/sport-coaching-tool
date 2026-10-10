@@ -62,6 +62,23 @@ describe('offlineQueue', () => {
     expect(queueLength(OTHER_MATCH)).toBe(1)
   })
 
+  it('stamps every create at queue time with occurred_at and a stable device id', () => {
+    const first = enqueue(MATCH, { type: 'create', path: `${MATCH}/logs`, method: 'POST', body: { action_type: 'goal' } })
+    const second = enqueue(OTHER_MATCH, { type: 'create', path: `${OTHER_MATCH}/logs`, method: 'POST', body: { action_type: 'goal' } })
+
+    // occurred_at is the queue-time instant — when the action happened.
+    expect(first.body.occurred_at).toBe(new Date(first.queuedAt).toISOString())
+    expect(first.body.device_id).toEqual(expect.any(String))
+    // One device: the id is persisted per browser profile, not per action.
+    expect(second.body.device_id).toBe(first.body.device_id)
+    expect(localStorage.getItem('kickstat_device_id')).toBe(first.body.device_id)
+
+    // Edits carry no "happened at" time of their own.
+    const edit = enqueue(MATCH, { type: 'edit', path: `${MATCH}/logs/1`, method: 'PATCH', body: { minute: 9 } })
+    expect(edit.body.occurred_at).toBeUndefined()
+    expect(edit.body.device_id).toBeUndefined()
+  })
+
   it('generates unique client ids even without crypto.randomUUID', () => {
     const seen = new Set()
     for (let i = 0; i < 50; i += 1) seen.add(newClientId())
@@ -84,7 +101,12 @@ describe('offlineQueue', () => {
       `${MATCH}/logs/101`,
     ])
     expect(apiRequest.mock.calls[0][1]).toMatchObject({ method: 'POST', getToken })
-    expect(apiRequest.mock.calls[0][1].body).toEqual(goalBody('client-goal'))
+    // The create still carries its client values — plus the queue-time stamps
+    // (device + occurred_at) the server orders the timeline by.
+    const replayedBody = apiRequest.mock.calls[0][1].body
+    expect(replayedBody).toMatchObject(goalBody('client-goal'))
+    expect(replayedBody.device_id).toEqual(expect.any(String))
+    expect(replayedBody.occurred_at).toEqual(expect.any(String))
     expect(results.every((r) => r.ok)).toBe(true)
     expect(queueLength(MATCH)).toBe(0)
   })

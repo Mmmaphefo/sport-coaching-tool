@@ -561,3 +561,80 @@ describe('League / tournament events', () => {
     expect(statsRes.body.topAssisters[0]).toMatchObject({ athleteName: 'Creative Playmaker', assists: 1 })
   })
 })
+
+// T5/T9: offline-queued logs carry the device they were logged on and the
+// instant the action happened. The timeline orders by occurred_at so a
+// replay that arrives after newer actions still lands where it happened.
+describe('T9/T5 (integration) — occurred_at ordering and device metadata', () => {
+  test('a late-arriving offline log keeps its place on the timeline', async () => {
+    const event = await createEvent()
+    const goalScorer = await createAthlete()
+    const cornerTaker = await createAthlete({ name: 'Sipho Dlamini', squad_number: 7 })
+    await setEventLineup(event.id)
+
+    // The corner happened first on the pitch, but its create queued offline
+    // and only reached the server after the goal.
+    const goal = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({
+        athlete_id: goalScorer.id,
+        action_type: 'goal',
+        is_scoring: true,
+        minute: 45,
+        occurred_at: '2026-10-10T15:05:00.000Z',
+      })
+    expect(goal.status).toBe(201)
+
+    const corner = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({
+        athlete_id: cornerTaker.id,
+        action_type: 'corner',
+        minute: 45,
+        occurred_at: '2026-10-10T15:00:00.000Z',
+        device_id: 'pitch-tablet-01',
+      })
+    expect(corner.status).toBe(201)
+
+    const logs = await request(app).get(`/api/events/${event.id}/logs`)
+    expect(logs.status).toBe(200)
+    // Same minute: the corner (occurred first) sorts before the goal even
+    // though its row was inserted last.
+    expect(logs.body.map((l) => l.id)).toEqual([corner.body.id, goal.body.id])
+  })
+
+  test('stores device_id (clamped to 64 characters) and occurred_at', async () => {
+    const event = await createEvent()
+    const athlete = await createAthlete()
+    await setEventLineup(event.id)
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({
+        athlete_id: athlete.id,
+        action_type: 'goal',
+        occurred_at: '2026-10-10T16:30:00.000Z',
+        device_id: 'd'.repeat(80),
+      })
+
+    expect(res.status).toBe(201)
+    expect(res.body.device_id).toBe('d'.repeat(64))
+    expect(new Date(res.body.occurred_at).toISOString()).toBe('2026-10-10T16:30:00.000Z')
+
+    const stored = await pool.query('SELECT device_id FROM log_entries WHERE id = $1', [res.body.id])
+    expect(stored.rows[0].device_id).toBe('d'.repeat(64))
+  })
+
+  test('rejects a malformed occurred_at instead of silently ignoring it', async () => {
+    const event = await createEvent()
+    const athlete = await createAthlete()
+    await setEventLineup(event.id)
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/logs`)
+      .send({ athlete_id: athlete.id, action_type: 'goal', occurred_at: 'last tuesday' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('occurred_at must be a valid date')
+  })
+})
