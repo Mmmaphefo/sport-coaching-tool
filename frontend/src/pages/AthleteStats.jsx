@@ -630,7 +630,22 @@ function AthleteStats() {
     )
   }
 
-  const { athlete, injuries, currentInjury, bmi, overrides, stats, seasons, seasonBreakdown, opponentBreakdown } = data
+  // Only `athlete` is guaranteed in the payload. The breakdowns are derived
+  // from the log server-side, so an athlete with no history (or a response from
+  // an older backend) omits them entirely — default the list fields the same
+  // defensive way `logs` and `overrides` are handled above and below, otherwise
+  // a missing key throws during render and the whole card goes blank.
+  const {
+    athlete,
+    injuries = [],
+    currentInjury = null,
+    bmi = null,
+    overrides = null,
+    stats = null,
+    seasons = [],
+    seasonBreakdown = [],
+    opponentBreakdown = [],
+  } = data
   const seed = Number(athlete.id) || 1
   const group = positionGroup(athlete.position)
 
