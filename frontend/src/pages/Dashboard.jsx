@@ -694,6 +694,9 @@ function Dashboard() {
                     ? 'Invitation email sent. Share this link as a fallback:'
                     : 'Invite created — the email could not be delivered, so share this link instead:'}
                 </p>
+                {inviteResult.emailError && (
+                  <p className="dash-invite-error">Delivery failed: {inviteResult.emailError}</p>
+                )}
                 <code className="dash-invite-link">{inviteResult.inviteLink}</code>
               </div>
             )}

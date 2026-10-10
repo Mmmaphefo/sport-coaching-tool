@@ -753,7 +753,10 @@ function Roster() {
           <div className="roster-form roster-added-confirmation">
             <p>
               <strong>{justAdded.name}</strong> was added to the roster.
-              {justAdded.invited && ` An invite email has been sent to ${justAdded.email}.`}
+              {justAdded.invited &&
+                (justAdded.invite?.emailSent
+                  ? ` An invite email has been sent to ${justAdded.email}.`
+                  : ` The invite email could not be delivered to ${justAdded.email} — share the link below instead.`)}
             </p>
             <InviteCredentials name={justAdded.name} invite={justAdded.invite} />
             <div className="roster-form-actions">

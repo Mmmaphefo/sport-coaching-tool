@@ -41,12 +41,13 @@ async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant
     // password from a new account creation cannot be recovered, so only the
     // link is re-shared here.
     const inviteLink = `${process.env.FRONTEND_URL || ''}/invite/${existing.rows[0].token}`
-    const emailSent = await sendInviteEmail({ to: email, role, inviteLink, squadName })
+    const { sent, error: emailError } = await sendInviteEmail({ to: email, role, inviteLink, squadName })
 
     return {
       inviteId: existing.rows[0].id,
       inviteLink,
-      emailSent,
+      emailSent: sent,
+      emailError: emailError || null,
       resent: true,
     }
   }
@@ -79,14 +80,15 @@ async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant
   }
   const inviteLink = `${process.env.FRONTEND_URL || ''}/invite/${result.rows[0].token}`
 
-  const emailSent = await sendInviteEmail({ to: email, role, inviteLink, squadName, credentials })
+  const { sent, error: emailError } = await sendInviteEmail({ to: email, role, inviteLink, squadName, credentials })
 
   return {
     inviteId: result.rows[0].id,
     // Still returned so the coach has a manual fallback/confirmation — the
     // frontend no longer treats this as the primary way to deliver it.
     inviteLink,
-    emailSent,
+    emailSent: sent,
+    emailError: emailError || null,
     credentials: credentials || null,
   }
 }
