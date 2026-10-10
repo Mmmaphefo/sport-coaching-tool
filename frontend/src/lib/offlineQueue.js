@@ -14,6 +14,10 @@
 //   - A permanent rejection (HTTP 4xx — e.g. an entry that was already
 //     undone) is dropped and the replay continues. Only network/server
 //     failures pause the queue, so one bad action can never wedge it.
+//   - Every create is stamped when it is queued with occurred_at (the
+//     instant the action happened on the pitch) and device_id (this
+//     device). The server orders the timeline by occurred_at, so a replay
+//     that reaches it after newer actions still lands where it happened.
 
 const STORAGE_PREFIX = 'kickstat_offline_queue_'
 
@@ -48,12 +52,37 @@ export function newClientId() {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+const DEVICE_KEY = 'kickstat_device_id'
+
+// The touchline device's own id (T5), persisted in this browser profile so
+// the server can tell which device logged an action. Falls back to a fresh
+// id per call when storage is unavailable (private browsing).
+export function getDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY)
+    if (!id) {
+      id = newClientId()
+      localStorage.setItem(DEVICE_KEY, id)
+    }
+    return id
+  } catch {
+    return newClientId()
+  }
+}
+
 // action: { type: 'create' | 'edit' | 'undo', path, method, body, clientId? }
 export function enqueue(matchKey, action) {
   const queue = readQueue(matchKey)
   const entry = { actionId: newClientId(), ...action, queuedAt: Date.now() }
-  if (entry.type === 'create' && !entry.clientId) {
-    entry.clientId = entry.actionId
+  if (entry.type === 'create') {
+    if (!entry.clientId) entry.clientId = entry.actionId
+    // T5/T9: stamp the create at queue time — that is when and where the
+    // action happened, even if the connection only comes back much later.
+    entry.body = {
+      ...entry.body,
+      occurred_at: entry.body?.occurred_at ?? new Date(entry.queuedAt).toISOString(),
+      device_id: entry.body?.device_id ?? getDeviceId(),
+    }
   }
   queue.push(entry)
   writeQueue(matchKey, queue)
