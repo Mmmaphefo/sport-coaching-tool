@@ -81,12 +81,16 @@ router.get('/season', requireAuth(), async (req, res) => {
 });
 
 // GET /api/reports/match/:kind/:id — kind is "event" (a regular match) or
-// "fixture" (a league/tournament fixture the squad played in).
+// "fixture" (a league/tournament fixture the squad played in). The shared
+// stats library spells a regular match "match", which is accepted as an
+// alias so trends and comparisons can link here with their own vocabulary.
 router.get('/match/:kind/:id', requireAuth(), async (req, res) => {
   try {
     const { userId: clerkUserId } = getAuth(req);
     const squadId = await getOwnedSquadId(pool, clerkUserId);
-    const { kind } = req.params;
+    // lib/teamStats calls a regular match kind "match"; this route speaks
+    // "event". Normalise so both vocabularies reach the same lookup.
+    const kind = req.params.kind === 'match' ? 'event' : req.params.kind;
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || (kind !== 'event' && kind !== 'fixture')) {
       return res.status(404).json({ error: 'Match not found' });
