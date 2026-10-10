@@ -5,14 +5,14 @@
 
 ---
 
-## Meeting 1: Sprint 3 Mark Dispute & Gap Review
+## Meeting 1: Sprint 3 Review
 **Date:** Monday, 29/09/2026  
 **Time:** 17:00 - 18:30  
 **Attendees:** All team members  
 
 ### Agenda
 1. Sprint 3 marks received — marker used wrong rubric
-2. Dispute resolution with tutor (Calvin)
+2. Dispute resolution with marker and tutor (Calvin and Austin)
 3. Gap review of remaining features
 
 ### Discussion Points
@@ -22,9 +22,7 @@
 - Team discovered the marker (Calvin) had assessed the project against the **Sport Analytics Tool** brief, not the **Sport Coaching Tool** brief
 - The Analytics brief has different requirements (data pipelines, versioned statistics, batch processing) that do not apply to KickStat
 - Lindo forwarded the email to Calvin confirming the miscommunication
-- Calvin acknowledged the error: *"there seems to have been some miscommunication. I will ask Brendan to raise your marks for the relevant sections."*
-- Calvin noted some legitimate issues remain: external API insecurity and data validation gaps
-- Brendan was asked to increase the Feature mark
+- Noted some legitimate issues remain: external API insecurity and data validation gaps
 
 **Gap Review:**
 - Team reviewed the kickstat-gap-review.pdf document identifying remaining work
@@ -36,16 +34,16 @@
   - README contains claims not backed by code (D1-D9)
 
 ### Decisions Made
-1. Mark dispute escalated to Brendan for Feature mark adjustment
+1. Mark dispute escalated for Feature mark adjustment
 2. Team to prioritise P0 items (permissions, offline, server sleep) before Advanced features
 3. All members to push work to main and delete feature branches before submission
 
 ---
 
 ## Meeting 2: Feature Work & CI Fixes
-**Date:** Friday, 09/10/2026  
-**Time:** 11:00 - 23:00  
-**Attendees:** All team members (async coordination via WhatsApp)  
+**Date:** Thursaday 8/10/2026  
+**Time:** 17:00-18:00
+**Attendees:** All team members
 
 ### Agenda
 1. Self-hosted CI runner setup to speed up deployments
@@ -54,14 +52,14 @@
 
 ### Discussion Points
 
-**CI Runner Setup (Tasmiya):**
+**CI Runner Setup :**
 - Shared Gitea runners (sdp-runner-1/2) were slow due to queue contention across all SDP groups
 - Provisioned Oracle Cloud VM (bug-off-runner-new, 145.241.190.111) as self-hosted runner
 - Installed act_runner v5.0.0, Docker, Node.js v22, PostgreSQL 13
 - CI pipeline now runs in ~8 minutes total (down from 15+ minutes waiting in queue)
 - All 4 jobs passing: Frontend Lint & Build, Backend Lint & Test, Coverage Dashboard, Deploy Production
 
-**Critical Bugs Fixed (Tasmiya):**
+**Critical Bugs Fixed:**
 
 1. **RoleSelect Page Freeze** (HIGH PRIORITY)
    - Root cause: Mount effect awaited `GET /api/account/me` with no timeout; when Render backend was asleep (free tier, 15-min idle sleep), the call hung 30-60s blocking all interaction
@@ -80,7 +78,7 @@
    - Files: `frontend/src/pages/Welcome.jsx`, `frontend/src/pages/RoleSelect.jsx`
 
 **Feature Work:**
-- **Kgethie:** Completed level 1 and 2 features; added team comparison and roster (T10, T19, T20); working on level 3
+- Added team comparison and roster (T10, T19, T20)
 - **Mmaphefo:** Worked on medium priority items, pushed to EventsCalendar branch
 - **Lindo:** Working on offline syncing and feature verification
 - Team coordinated via WhatsApp to merge all branches to main before submission
@@ -98,7 +96,7 @@
 | Verify CI pipeline green on self-hosted runner | Tasmiya | Done |
 | Fix frontend test failures on feature branches | Mmaphefo | In progress |
 | Verify offline syncing works end-to-end | Lindo | In progress |
-| Merge all feature branches to main | All | In progress |
+| Merge all feature branches to main |Lindo | In progress |
 | Set up Cron-Job.org keepalive for Render backend | Tasmiya | Pending |
 | Migrate Clerk to production keys (pk_live) | Team | Pending - fixes Safari freeze |
 | Final submission testing | All | In progress |
@@ -107,7 +105,7 @@
 - **Safari + Clerk dev keys:** `getToken()` hangs indefinitely in Safari due to third-party cookie blocking. Workaround: use Chrome. Permanent fix: migrate to Clerk production instance (free tier available).
 - **Render cold start:** Backend sleeps after 15 min idle, causing 30-60s first-request delay. Mitigated by timeouts; permanent fix: external keepalive cron job.
 - **PostgreSQL version mismatch:** Runner VM has Postgres 13, CI service container specifies Postgres 16. No issues observed but should be monitored.
-- **Server error on team comparison:** Kgethie reported a server error for team comparison feature; needs investigation once credits are available.
+- **Server error on team comparison:** reported server error for team comparison feature; needs investigation once credits are available.
 
 ### Decisions Made
 1. Self-hosted runner approved for production CI (faster than shared runners)
@@ -117,3 +115,12 @@
 5. All feature branches to be merged to main and deleted before submission
 
 ---
+## Meeting 3: Final check before submission
+**Date:** Thursaday 8/10/2026  
+**Time:** 17:00-18:00
+**Attendees:** All team members
+
+### Review
+- Team ran through the app and made sure all features implemented and working in accordance with project brief and sprint rubrics
+- Documentation up to date
+- Testing up to date
