@@ -216,6 +216,7 @@ Interactive API documentation (Swagger UI) is served by the backend at `/api/doc
 | GET | `/api/reports/season?from=&to=` | Season report: record, results, player totals, per-opponent record |
 | GET | `/api/reports/match/:kind/:id` | Match report for a regular match (`event`) or league fixture (`fixture`) |
 | GET | `/api/dashboard/summary` | Dashboard summary (readiness, form, leaders) |
+| GET | `/api/dashboard/trends` | Squad form over time — completed matches, scores, results, season record |
 | GET / POST | `/api/events` | List or create events and leagues |
 | GET | `/api/events/clashes` | Pre-creation conflict check |
 | GET / PATCH / DELETE | `/api/events/:id` | Event detail / update / remove |
