@@ -101,6 +101,7 @@
   height: 16px;
   animation-name: loader-bounce-inline, loader-spin;
 }
+
 /* Inside a button the label must match the button's own text colour instead
    of the page-wide soft ink used by the standalone loader. */
 .loader-inline .loader-label {
@@ -112,3 +113,4 @@
   from { transform: translateY(-10px); }
   to { transform: translateY(0); }
 }
+

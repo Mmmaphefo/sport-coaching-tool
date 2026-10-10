@@ -10,6 +10,66 @@ import { useCountUp } from '../lib/useCountUp'
 import StatOverrideControl from '../components/StatOverrideControl'
 import './AthleteStats.css'
 
+// Simple, dependency-free bar chart for season trends. Renders raw SVG so we
+// don't need to add a charting library just for one trend line.
+function SeasonTrendChart({ seasonBreakdown }) {
+  if (!seasonBreakdown || seasonBreakdown.length === 0) return null
+
+  const width = 600
+  const height = 180
+  const padding = 32
+  const barGap = 12
+  const maxGoals = Math.max(...seasonBreakdown.map((s) => s.goals), 1)
+  const barWidth =
+    (width - padding * 2 - barGap * (seasonBreakdown.length - 1)) / seasonBreakdown.length
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      style={{ width: '100%', maxWidth: 600, height: 'auto' }}
+      role="img"
+      aria-label="Goals per season trend chart"
+    >
+      {seasonBreakdown.map((s, i) => {
+        const barHeight = (s.goals / maxGoals) * (height - padding * 2)
+        const x = padding + i * (barWidth + barGap)
+        const y = height - padding - barHeight
+
+        return (
+          <g key={s.season}>
+            <rect
+              x={x}
+              y={y}
+              width={barWidth}
+              height={barHeight}
+              rx={4}
+              fill="var(--color-lime-deep)"
+            />
+            <text
+              x={x + barWidth / 2}
+              y={y - 6}
+              textAnchor="middle"
+              fontSize="12"
+              fill="currentColor"
+            >
+              {s.goals}
+            </text>
+            <text
+              x={x + barWidth / 2}
+              y={height - padding + 16}
+              textAnchor="middle"
+              fontSize="11"
+              fill="var(--color-ink-soft)"
+            >
+              {s.season}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 // Maps a stat card's display label to the stat_key the backend's override
 // endpoint understands. Cards not listed here (BMI, G+A/match, GK
 // estimates) aren't directly-logged counts, so they can't be overridden.
@@ -19,6 +79,7 @@ const OVERRIDE_STAT_KEY = {
   Assists: 'assists',
   'Yellow cards': 'yellowCards',
   'Red cards': 'redCards',
+  Penalties: 'penalties',
 }
 
 const emptyInjuryForm = {
@@ -411,8 +472,7 @@ function SaveMapCard({ seed, saves, conceded }) {
         <span className="ath-legend-item"><span className="ath-legend-dot ath-legend-dot-red" /> Conceded</span>
       </div>
       <p className="ath-card-note ath-card-note-dark">Estimated placement — no shot data tracked yet.</p>
-    </div>
-  )
+    </div>  )
 }
 
 function AthleteStats() {
@@ -425,6 +485,7 @@ function AthleteStats() {
   const [athleteId, setAthleteId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedSeason, setSelectedSeason] = useState('') // '' = all time
   const [period, setPeriod] = useState('season')
   const [injuryFormOpen, setInjuryFormOpen] = useState(false)
   const [injuryForm, setInjuryForm] = useState(emptyInjuryForm)
@@ -452,12 +513,12 @@ function AthleteStats() {
   }, [logs, period, nowMs])
   const agg = useMemo(() => aggregate(periodLogs), [periodLogs])
   const matches = useMemo(() => matchesFromLogs(periodLogs).slice(-12), [periodLogs])
-
-  const load = useCallback(async () => {
+  const load = useCallback(async (season) => {
     setLoading(true)
     setError('')
     try {
-      const result = await apiRequest(`/api/athletes/${id}/stats`, { getToken })
+      const query = season ? `?season=${encodeURIComponent(season)}` : ''
+      const result = await apiRequest(`/api/athletes/${id}/stats${query}`, { getToken })
       setData(result)
     } catch (err) {
       setError(err.message)
@@ -478,10 +539,9 @@ function AthleteStats() {
   }, [getToken])
 
   useEffect(() => {
-    load()
-    loadAccount()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+    load(selectedSeason)
+    loadAccount()    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, selectedSeason])
 
   async function handleLogInjury(e) {
     e.preventDefault()
@@ -499,7 +559,7 @@ function AthleteStats() {
       })
       setInjuryFormOpen(false)
       setInjuryForm(emptyInjuryForm)
-      await load()
+      await load(selectedSeason)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -520,7 +580,7 @@ function AthleteStats() {
         body: { clear: true },
         getToken,
       })
-      await load()
+      await load(selectedSeason)
     } catch (err) {
       setError(err.message)
     }
@@ -539,7 +599,7 @@ function AthleteStats() {
         getToken,
       })
       setEditingReturnDateId(null)
-      await load()
+      await load(selectedSeason)
     } catch (err) {
       setError(err.message)
     }
@@ -570,7 +630,22 @@ function AthleteStats() {
     )
   }
 
-  const { athlete, injuries, currentInjury, bmi, overrides, stats } = data
+  // Only `athlete` is guaranteed in the payload. The breakdowns are derived
+  // from the log server-side, so an athlete with no history (or a response from
+  // an older backend) omits them entirely — default the list fields the same
+  // defensive way `logs` and `overrides` are handled above and below, otherwise
+  // a missing key throws during render and the whole card goes blank.
+  const {
+    athlete,
+    injuries = [],
+    currentInjury = null,
+    bmi = null,
+    overrides = null,
+    stats = null,
+    seasons = [],
+    seasonBreakdown = [],
+    opponentBreakdown = [],
+  } = data
   const seed = Number(athlete.id) || 1
   const group = positionGroup(athlete.position)
 
@@ -592,6 +667,7 @@ function AthleteStats() {
     appearances: stats?.appearances ?? agg.appearances,
     goals: stats?.goals ?? agg.goals,
     assists: stats?.assists ?? agg.assists,
+    penalties: stats?.penalties ?? agg.penalties,
     yellowCards: stats?.yellowCards ?? agg.yellowCards,
     redCards: stats?.redCards ?? agg.redCards,
   }
@@ -621,6 +697,7 @@ function AthleteStats() {
         { label: 'Goals', value: shown.goals, accent: true },
         { label: 'Assists', value: shown.assists, dark: true },
         { label: 'G+A / match', value: Number(involvementsPerMatch), dark: true },
+        { label: 'Penalties', value: shown.penalties, dark: true },
         { label: 'Yellow cards', value: shown.yellowCards, dark: true },
         { label: 'Red cards', value: shown.redCards, dark: true },
       ]
@@ -642,8 +719,7 @@ function AthleteStats() {
               <span className="ath-pos-pill">{GROUP_LABELS[group]}</span>
               {athlete.position && <span className="ath-pos-pill ath-pos-pill-soft">{athlete.position}</span>}
               {age != null && <span className="ath-pos-pill ath-pos-pill-soft">Age {age}</span>}
-              <span className="ath-pos-pill ath-pos-pill-soft">Season {season}</span>
-            </div>
+              <span className="ath-pos-pill ath-pos-pill-soft">Season {season}</span>            </div>
           </div>
           <Link to="/roster" className="btn btn-ghost ath-back-btn">Back to roster</Link>
         </header>
@@ -664,6 +740,21 @@ function AthleteStats() {
               </button>
             ))}
           </div>
+          {seasons.length > 0 && (
+            <div className="ath-season-select">
+              <label htmlFor={`season-${id}`}>Season</label>
+              <select
+                id={`season-${id}`}
+                value={selectedSeason}
+                onChange={(e) => setSelectedSeason(e.target.value)}
+              >
+                <option value="">All time</option>
+                {seasons.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </section>
 
         {error && <div className="roster-error">{error}</div>}
@@ -705,7 +796,7 @@ function AthleteStats() {
                     statKey={statKey}
                     override={override}
                     getToken={getToken}
-                    onChange={load}
+                    onChange={() => load(selectedSeason)}
                   />
                 )}
               </div>
@@ -714,11 +805,50 @@ function AthleteStats() {
         </div>
 
         <div className="ath-charts-grid">
+          {seasonBreakdown.length > 1 && (
+            <div className="ath-card">
+              <span className="ath-card-eyebrow">Season history</span>
+              <h3>Goals by season</h3>
+              <SeasonTrendChart seasonBreakdown={seasonBreakdown} />
+              <p className="ath-card-note">Logged goals per season — full career history.</p>
+            </div>
+          )}
           <ImpactChart matches={matches} />
           <HeatMapCard group={group} seed={seed} />
           {gk && <SaveMapCard seed={seed} saves={gk.saves} conceded={gk.conceded} />}
           <RadarCard group={group} seed={seed} />
         </div>
+
+        {opponentBreakdown.length > 0 && (
+          <div className="ath-card" style={{ marginBottom: '32px' }}>
+            <span className="ath-card-eyebrow">Matchups</span>
+            <h3>Opponent comparison</h3>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
+              <thead>
+                <tr>
+                    {['Opponent', 'Apps', 'Goals', 'Assists', 'Yellow', 'Red'].map((h) => (
+                      <th key={h} style={{ padding: '0.5rem', borderBottom: '2px solid var(--color-line)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {opponentBreakdown.map((o) => (
+                    <tr key={o.opponent}>
+                      <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--color-line)' }}>{o.opponent}</td>
+                      <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--color-line)' }}>{o.appearances}</td>
+                      <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--color-line)' }}>{o.goals}</td>
+                      <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--color-line)' }}>{o.assists}</td>
+                      <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--color-line)' }}>{o.yellowCards}</td>
+                      <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--color-line)' }}>{o.redCards}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="ath-card-note">{selectedSeason ? `Totals for the ${selectedSeason} season.` : 'Totals across all seasons.'}</p>
+          </div>
+        )}
 
         {(tags.length > 0 || athlete.coach_notes) && (
           <div className="ath-tactics-section">
@@ -857,7 +987,7 @@ function AthleteStats() {
         <h3 className="ath-section-title">Logged actions</h3>
         {logs.length === 0 ? (
           <div className="roster-empty">
-            <p>No actions logged for this athlete yet.</p>
+            <p>No actions logged for this athlete{selectedSeason ? ` in ${selectedSeason}` : ' yet'}.</p>
           </div>
         ) : (
           <div className="ath-timeline">

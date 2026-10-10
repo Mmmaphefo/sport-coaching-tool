@@ -706,3 +706,29 @@
     animation: none;
   }
 }
+
+/* Season scope picker (T17) — sits under the period toggle in the hero. */
+.ath-season-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ath-season-select label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.ath-season-select select {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}

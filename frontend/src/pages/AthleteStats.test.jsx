@@ -55,7 +55,9 @@ function renderAt(path = '/roster/5') {
 
 function mockApi(payload) {
   mocks.apiRequest.mockImplementation((path) => {
-    if (path === '/api/athletes/5/stats') return Promise.resolve(payload)
+    // The component appends ?season=… once a season is picked, so match the
+    // endpoint rather than the exact string.
+    if (path.startsWith('/api/athletes/5/stats')) return Promise.resolve(payload)
     if (path === '/api/account/me') return Promise.resolve({ role: 'coach' })
     return Promise.resolve({})
   })
@@ -200,6 +202,58 @@ describe('AthleteStats', () => {
     // Stats without an override don't carry the badge.
     const assistsCard = screen.getByText('Assists').closest('.ath-stat-card')
     expect(assistsCard.querySelector('.stat-override-badge')).toBeNull()
+  })
+
+  it('renders the season picker and refetches when a season is chosen', async () => {
+    mockApi({
+      ...basePayload,
+      seasons: ['2026/27', '2025/26'],
+      seasonBreakdown: [
+        { season: '2025/26', appearances: 4, goals: 3, assists: 1, penalties: 0, yellowCards: 0, redCards: 0 },
+        { season: '2026/27', appearances: 2, goals: 1, assists: 1, penalties: 1, yellowCards: 1, redCards: 0 },
+      ],
+    })
+
+    renderAt()
+
+    const picker = await screen.findByRole('combobox', { name: /Season/i })
+    expect(picker).toHaveValue('')
+    expect(screen.getByRole('option', { name: 'All time' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '2026/27' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '2025/26' })).toBeInTheDocument()
+    expect(screen.getByText('Goals by season')).toBeInTheDocument()
+
+    fireEvent.change(picker, { target: { value: '2025/26' } })
+
+    await waitFor(() => {
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/api/athletes/5/stats?season=2025%2F26',
+        expect.objectContaining({ getToken: mocks.getToken })
+      )
+    })
+  })
+
+  it('still renders when the payload carries no season or opponent breakdowns', async () => {
+    // The server derives those from the log, so an athlete with no history omits
+    // them entirely. Every field but `athlete` must be optional — a missing one
+    // used to throw during render and blank the whole card.
+    mockApi({ athlete: basePayload.athlete, logs: basePayload.logs })
+
+    renderAt()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Thabo Mokoena/i)).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Goals')).toBeInTheDocument()
+    expect(screen.getByText(/No injuries logged for this athlete/i)).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /Season/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Goals by season')).not.toBeInTheDocument()
+    expect(screen.queryByText('Opponent comparison')).not.toBeInTheDocument()
+
+    // With no server stats the cards fall back to the client-side log totals.
+    const goalsCard = screen.getByText('Goals').closest('.ath-stat-card')
+    expect(goalsCard.querySelector('.ath-stat-value')).toHaveTextContent('2')
   })
 
   it('redirects a player away from another athlete card to their own', async () => {
