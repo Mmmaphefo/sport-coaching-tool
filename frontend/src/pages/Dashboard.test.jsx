@@ -195,6 +195,37 @@ describe('Dashboard', () => {
     expect(screen.getByText(/invite\/abc123/)).toBeInTheDocument()
   })
 
+  it('shows the provider reason when the invite email is rejected', async () => {
+    mocks.apiRequest.mockImplementation((path) => {
+      if (path.startsWith('/api/dashboard/summary')) return Promise.resolve(summaryPayload)
+      if (path === '/api/invites') {
+        return Promise.resolve({
+          inviteId: 10,
+          inviteLink: 'http://localhost:5173/invite/def456',
+          emailSent: false,
+          emailError: 'You can only send testing emails to your own email address',
+        })
+      }
+      return Promise.resolve({})
+    })
+
+    renderWithRouter(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Invite an Assistant/i })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText(/assistant@example.com/i), {
+      target: { value: 'coach2@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Send invite/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not be delivered/i)).toBeInTheDocument()
+      expect(screen.getByText(/testing emails to your own email address/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/invite\/def456/)).toBeInTheDocument()
+  })
+
   it('shows the server message when an invite already exists', async () => {
     mocks.apiRequest.mockImplementation((path) => {
       if (path.startsWith('/api/dashboard/summary')) return Promise.resolve(summaryPayload)

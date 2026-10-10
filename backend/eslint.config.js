@@ -28,6 +28,9 @@ module.exports = [
       sourceType: 'module',
       globals: {
         ...globals.node,
+        // describe/test/expect resolve through globals.jest (above), but
+        // that set predates Vitest and has no `vi`.
+        vi: 'readonly',
       },
     },
   },
