@@ -18,7 +18,9 @@ const routesDir = path.resolve(__dirname, '../../src/routes')
 const pool = require('../../src/db.js')
 
 // Files that are helpers or need a signed external payload, not plain routers.
-const SKIP = new Set(['_squad.js', 'webhooks.js'])
+// health.js is excluded on purpose: it never touches the database, so Render's
+// health check and the keep-alive ping keep answering 200 during an outage.
+const SKIP = new Set(['_squad.js', 'webhooks.js', 'health.js'])
 
 const app = express()
 app.use(express.json())

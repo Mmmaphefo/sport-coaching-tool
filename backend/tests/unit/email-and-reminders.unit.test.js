@@ -25,7 +25,9 @@ function load(which, { apiKey = 're_test' } = {}) {
   const fake = (exports) => ({ loaded: true, exports })
   require.cache[paths.resend] = fake({ Resend: class { constructor() { this.emails = { send } } } })
   require.cache[paths.clerk] = fake({ clerkClient: { users: { getUser } } })
-  delete require.cache[paths[which]]
+  // reminders.js sends through email.js, so both are reloaded together.
+  delete require.cache[paths.email]
+  delete require.cache[paths.reminders]
   return require(paths[which])
 }
 
@@ -81,8 +83,8 @@ afterEach(() => {
 describe('sendInviteEmail', () => {
   test('sends an assistant invite with the link', async () => {
     const { sendInviteEmail } = load('email')
-    const ok = await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'https://x/invite/t1', squadName: 'Wits FC' })
-    expect(ok).toBe(true)
+    const result = await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'https://x/invite/t1', squadName: 'Wits FC' })
+    expect(result).toEqual({ sent: true })
     const msg = send.mock.calls[0][0]
     expect(msg.to).toBe('a@b.c')
     expect(msg.subject).toContain('Wits FC')
@@ -102,13 +104,38 @@ describe('sendInviteEmail', () => {
   test('reports failure instead of throwing when sending fails', async () => {
     send.mockRejectedValue(new Error('network'))
     const { sendInviteEmail } = load('email')
-    expect(await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'l', squadName: 's' })).toBe(false)
+    expect(await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'l', squadName: 's' }))
+      .toEqual({ sent: false, error: 'network' })
+  })
+
+  test('treats a provider rejection as not sent', async () => {
+    send.mockResolvedValue({ data: null, error: { message: 'You can only send testing emails to your own email address (owner@example.com)' } })
+    const { sendInviteEmail } = load('email')
+    const result = await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'l', squadName: 's' })
+    expect(result.sent).toBe(false)
   })
 
   test('skips sending when no email provider is configured', async () => {
     const { sendInviteEmail } = load('email', { apiKey: null })
-    expect(await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'l', squadName: 's' })).toBe(false)
+    expect((await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'l', squadName: 's' })).sent).toBe(false)
     expect(send).not.toHaveBeenCalled()
+  })
+})
+
+describe('publicEmailError (what the browser is told)', () => {
+  test('never repeats the provider message, which can contain the account owner email', () => {
+    const { publicEmailError } = load('email')
+    const raw = 'You can only send testing emails to your own email address (owner@example.com). Please verify a domain at resend.com/domains'
+    const safe = publicEmailError(raw)
+    expect(safe).toBe('Email can only be sent to outside addresses once a sending domain is set up.')
+    expect(safe).not.toMatch(/@|resend/i)
+  })
+
+  test('explains a missing configuration, a generic failure, and success', () => {
+    const { publicEmailError } = load('email')
+    expect(publicEmailError('RESEND_API_KEY is not configured')).toBe('Email sending is not set up on the server yet.')
+    expect(publicEmailError('socket hang up')).toBe('The email service could not send this invite right now.')
+    expect(publicEmailError(null)).toBeNull()
   })
 })
 
@@ -170,3 +197,92 @@ describe('sendEventReminders', () => {
     await expect(sendEventReminders(fakePool({ failSweep: true }))).resolves.toBeUndefined()
   })
 })
+
+describe('Brevo (used when BREVO_API_KEY is set)', () => {
+  let fetchMock
+  beforeEach(() => {
+    process.env.BREVO_API_KEY = 'xkeysib-test'
+    process.env.EMAIL_FROM = 'KickStat Team <kickstat.team@gmail.com>'
+    fetchMock = vi.fn(async () => ({ ok: true, status: 201, json: async () => ({ messageId: '<1@brevo>' }) }))
+    vi.stubGlobal('fetch', fetchMock)
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  test('sends an invite through Brevo, from the verified sender, instead of Resend', async () => {
+    const { sendInviteEmail } = load('email')
+    const result = await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'https://x/invite/t1', squadName: 'Wits FC' })
+    expect(result).toEqual({ sent: true })
+    expect(send).not.toHaveBeenCalled()
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.brevo.com/v3/smtp/email')
+    expect(init.headers['api-key']).toBe('xkeysib-test')
+    const body = JSON.parse(init.body)
+    expect(body.sender).toEqual({ name: 'KickStat Team', email: 'kickstat.team@gmail.com' })
+    expect(body.to).toEqual([{ email: 'a@b.c' }])
+    expect(body.subject).toContain('Wits FC')
+    expect(body.htmlContent).toContain('https://x/invite/t1')
+  })
+
+  test('accepts a bare sender address', async () => {
+    process.env.EMAIL_FROM = 'kickstat.team@gmail.com'
+    const { sendEmail } = load('email')
+    await sendEmail({ to: 'a@b.c', subject: 's', html: 'h' })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).sender).toEqual({ name: 'KickStat', email: 'kickstat.team@gmail.com' })
+  })
+
+  test('reports a Brevo rejection without throwing', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 400, json: async () => ({ code: 'invalid_parameter', message: 'Sender is not valid' }) })
+    const { sendInviteEmail, publicEmailError } = load('email')
+    const result = await sendInviteEmail({ to: 'a@b.c', role: 'assistant', inviteLink: 'l', squadName: 's' })
+    expect(result).toEqual({ sent: false, error: 'Sender is not valid' })
+    expect(publicEmailError(result.error)).toBe('The email service could not send this invite right now.')
+  })
+
+  test('falls back to the status code when Brevo returns no message', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => { throw new Error('not json') } })
+    const { sendEmail } = load('email')
+    expect(await sendEmail({ to: 'a@b.c', subject: 's', html: 'h' })).toEqual({ sent: false, error: 'Brevo returned status 401' })
+  })
+
+  test('reports a network failure and a timeout', async () => {
+    const { sendEmail } = load('email')
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+    expect(await sendEmail({ to: 'a@b.c', subject: 's', html: 'h' })).toEqual({ sent: false, error: 'fetch failed' })
+    fetchMock.mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+    expect(await sendEmail({ to: 'a@b.c', subject: 's', html: 'h' })).toEqual({ sent: false, error: 'Brevo did not respond in time' })
+  })
+
+  test('needs EMAIL_FROM (the verified sender)', async () => {
+    delete process.env.EMAIL_FROM
+    const { sendEmail, publicEmailError } = load('email')
+    const result = await sendEmail({ to: 'a@b.c', subject: 's', html: 'h' })
+    expect(result.sent).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(publicEmailError(result.error)).toBe('Email sending is not set up on the server yet.')
+  })
+
+  test('sends reminders through Brevo too, and only marks delivered ones', async () => {
+    const { sendEventReminders } = load('reminders', { apiKey: null })
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ message: 'rejected' }) })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({}) })
+    const pool = fakePool({ events: [event(21), event(22)] })
+    await sendEventReminders(pool)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).subject).toBe('Reminder: Match 22 is coming up')
+    expect(pool.updates).toEqual([22])
+  })
+
+  test('with no provider at all, nothing is sent and the reason says so', async () => {
+    delete process.env.BREVO_API_KEY
+    const { sendEmail, publicEmailError } = load('email', { apiKey: null })
+    const result = await sendEmail({ to: 'a@b.c', subject: 's', html: 'h' })
+    expect(result.sent).toBe(false)
+    expect(result.error).toMatch(/RESEND_API_KEY/)
+    expect(publicEmailError(result.error)).toBe('Email sending is not set up on the server yet.')
+  })
+})
+

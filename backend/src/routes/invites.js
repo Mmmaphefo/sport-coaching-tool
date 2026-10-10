@@ -3,7 +3,7 @@ const crypto = require('crypto')
 const pool = require('../db')
 const { clerkClient } = require('@clerk/express')
 const { requireAuth, getAuth } = require('../middleware/auth')
-const { sendInviteEmail } = require('../lib/email')
+const { sendInviteEmail, publicEmailError } = require('../lib/email')
 
 const router = express.Router()
 
@@ -47,7 +47,7 @@ async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant
       inviteId: existing.rows[0].id,
       inviteLink,
       emailSent: sent,
-      emailError: emailError || null,
+      emailError: publicEmailError(emailError),
       resent: true,
     }
   }
@@ -88,7 +88,7 @@ async function createInvite(pool, { email, squadId, invitedBy, role = 'assistant
     // frontend no longer treats this as the primary way to deliver it.
     inviteLink,
     emailSent: sent,
-    emailError: emailError || null,
+    emailError: publicEmailError(emailError),
     credentials: credentials || null,
   }
 }
