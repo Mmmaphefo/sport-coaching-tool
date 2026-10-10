@@ -32,6 +32,7 @@ const ACTION_NOTE = {
 
 function formatKickoff(value) {
   const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return 'Date to be confirmed'
   const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
   const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
   return `${day} · ${time}`
@@ -55,11 +56,14 @@ function Friendlies() {
     // ignores the token, but apiRequest always attaches one.
     const [list, directory, me] = await Promise.all([
       apiRequest('/api/friendlies', { getToken }),
-      apiRequest('/api/public/squads', { getToken }).catch(() => []),
+      apiRequest('/api/public/squads', { getToken }).catch(() => null),
       apiRequest('/api/account/me', { getToken }),
     ])
     setFriendlies(list)
-    setSquads(directory)
+    // The directory route answers { squads, live } — see PublicLanding for
+    // the same parsing. Accept a bare array too, but never trust the shape
+    // blindly: a non-array here whitescreened the whole app in production.
+    setSquads(Array.isArray(directory) ? directory : directory?.squads || [])
     setMySquadId(me.squadId ?? null)
   }, [getToken])
 

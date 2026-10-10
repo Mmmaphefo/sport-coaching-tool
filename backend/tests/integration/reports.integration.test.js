@@ -114,6 +114,17 @@ describe('GET /api/reports/match/:kind/:id', () => {
     expect((await get(`/api/reports/match/event/${theirs.rows[0].id}`)).status).toBe(404)
     expect((await get('/api/reports/match/training/1')).status).toBe(404)
   })
+
+  test('accepts the shared stats library\'s "match" spelling for regular matches', async () => {
+    const eventId = await seedEvent()
+    await log(eventId, { athlete: striker, action: 'goal', minute: 5, scoring: true })
+
+    const res = await get(`/api/reports/match/match/${eventId}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.score).toEqual({ us: 1, them: 0 })
+    expect(res.body.match.kind).toBe('event')
+  })
 })
 
 describe('GET /api/reports/season', () => {
