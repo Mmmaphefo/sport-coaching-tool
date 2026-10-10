@@ -2,7 +2,7 @@
 // Season report (T20): a printable summary of a period with a CSV export.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
@@ -28,10 +28,50 @@ function SeasonReport() {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Saved seasons (T17): picked here so the report covers exactly the
+  // coach's season instead of hand-typed dates. Loaded lazily — only once
+  // the option is chosen or a ?season= link opens the page.
+  const [seasonsList, setSeasonsList] = useState(null)
+  const [seasonId, setSeasonId] = useState('')
+  const [seasonsError, setSeasonsError] = useState('')
+  const [searchParams] = useSearchParams()
 
-  const period = useMemo(() => (preset === 'custom' ? custom : periodFor(preset)), [preset, custom])
+  useEffect(() => {
+    const wanted = searchParams.get('season')
+    if (wanted) {
+      setPreset('season')
+      setSeasonId(wanted)
+      apiRequest('/api/seasons', { getToken })
+        .then((list) => setSeasonsList(list))
+        .catch((err) => setSeasonsError(err.message))
+    }
+  }, [searchParams, getToken])
+
+  const loadSeasons = useCallback(async () => {
+    if (seasonsList) return
+    try {
+      setSeasonsList(await apiRequest('/api/seasons', { getToken }))
+    } catch (err) {
+      setSeasonsError(err.message)
+    }
+  }, [getToken, seasonsList])
+
+  const period = useMemo(() => {
+    if (preset === 'custom') return custom
+    if (preset === 'season') {
+      const season = seasonsList?.find((s) => String(s.id) === seasonId)
+      return season ? { from: season.starts_on, to: season.ends_on } : null
+    }
+    return periodFor(preset)
+  }, [preset, custom, seasonsList, seasonId])
 
   const load = useCallback(async () => {
+    // "A saved season" with nothing picked yet: wait rather than error.
+    if (preset === 'season' && !period) {
+      setReport(null)
+      setLoading(false)
+      return
+    }
     if (!period.from || !period.to || period.from > period.to) {
       setError('Choose a start date on or before the end date.')
       setLoading(false)
@@ -48,7 +88,7 @@ function SeasonReport() {
     } finally {
       setLoading(false)
     }
-  }, [period, getToken])
+  }, [preset, period, getToken])
 
   useEffect(() => {
     load()
@@ -87,13 +127,28 @@ function SeasonReport() {
           <div className="rp-toolbar-fields">
             <label className="tc-field">
               Period
-              <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+              <select value={preset} onChange={(e) => {
+                if (e.target.value === 'season') loadSeasons()
+                setPreset(e.target.value)
+              }}>
                 <option value="year">This year</option>
                 <option value="last-year">Last year</option>
                 <option value="90">Last 90 days</option>
+                <option value="season">A saved season</option>
                 <option value="custom">Custom dates</option>
               </select>
             </label>
+            {preset === 'season' && (
+              <label className="tc-field">
+                Season
+                <select value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
+                  <option value="">Choose a season…</option>
+                  {(seasonsList || []).map((s) => (
+                    <option key={s.id} value={String(s.id)}>{s.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {preset === 'custom' && (
               <>
                 <label className="tc-field">
@@ -120,6 +175,10 @@ function SeasonReport() {
         </div>
 
         {error && <div className="cmp-error" role="alert">{error}</div>}
+        {seasonsError && <div className="cmp-error" role="alert">{seasonsError}</div>}
+        {preset === 'season' && !period && (
+          <p className="tc-muted">Choose one of your seasons to build its report.</p>
+        )}
         {loading && !report && <Loader label="Building the report..." />}
 
         {report && (

@@ -53,6 +53,7 @@ function Layout({ children }) {
           {navItem('/tactics', 'Tactics')}
           {navItem('/sessions', 'Sessions')}
           {navItem('/events', 'Events')}
+          {!isAthlete && navItem('/seasons', 'Seasons')}
           {!isAthlete && navItem('/live', 'Live')}
           {navItem('/settings', 'Settings')}
         </nav>
