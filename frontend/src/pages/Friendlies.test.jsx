@@ -53,7 +53,7 @@ describe('Friendlies', () => {
   it('shows incoming proposals, the history table and the directory picker without own squad', async () => {
     routeCalls({
       '/api/friendlies': friendliesList,
-      '/api/public/squads': directory,
+      '/api/public/squads': { squads: directory },
       '/api/account/me': me,
     })
     render(<MemoryRouter><Friendlies /></MemoryRouter>)
@@ -95,7 +95,7 @@ describe('Friendlies', () => {
         }
         return proposals > 0 ? [...friendliesList] : friendliesList
       },
-      '/api/public/squads': directory,
+      '/api/public/squads': { squads: directory },
       '/api/account/me': me,
     })
     render(<MemoryRouter><Friendlies /></MemoryRouter>)
@@ -132,7 +132,7 @@ describe('Friendlies', () => {
       : f))
     routeCalls({
       '/api/friendlies': (opts) => (opts.method === 'POST' ? { ok: true } : (accepted ? afterAccept : friendliesList)),
-      '/api/public/squads': directory,
+      '/api/public/squads': { squads: directory },
       '/api/account/me': me,
       '/api/friendlies/5/accept': () => {
         accepted = true
@@ -170,7 +170,7 @@ describe('Friendlies', () => {
         }
         return friendliesList
       },
-      '/api/public/squads': directory,
+      '/api/public/squads': { squads: directory },
       '/api/account/me': me,
     })
     render(<MemoryRouter><Friendlies /></MemoryRouter>)
