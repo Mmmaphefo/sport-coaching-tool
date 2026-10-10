@@ -11,12 +11,6 @@ Work happens on feature branches, one per piece of work (e.g.
 branched off `main`. `main` is kept deployable — feature branches merge into
 it via pull request, not direct push.
 
-:::note
-Adjust this page to match your team's actual agreed convention if it differs
-— e.g. naming pattern, whether review is required before merge, how often
-feature branches should rebase/merge from `main`.
-:::
-
 ## Pull requests
 
 - Open a PR from your feature branch targeting `main` once the branch is in
