@@ -218,6 +218,11 @@ function LiveMatch() {
   const [editForm, setEditForm] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
   const [endingFixture, setEndingFixture] = useState(false)
+  // { at, text }: a failed action, shown beside where it was made —
+  // 'actions' under the Log Event buttons, 'edit' in the edit form,
+  // 'end' / 'sim' under the header buttons. Load and lineup errors keep
+  // using the page-level error.
+  const [actionError, setActionError] = useState(null)
 
   // --- Offline-first logging. ---
   // matchKey namespaces the queue per event/fixture, so switching matches
@@ -519,6 +524,7 @@ function LiveMatch() {
     if (logging) return
     setLogging(true)
     setError('')
+    setActionError(null)
     setHint('')
     const fullBody = { minute: clockMinute, ...body }
     try {
@@ -543,7 +549,7 @@ function LiveMatch() {
         setFlow(null)
         setHint('Saved on this device — the timeline is already updated; it will sync automatically.')
       } else {
-        setError(err.message)
+        setActionError({ at: 'actions', text: err.message })
       }
     } finally {
       setLogging(false)
@@ -737,6 +743,7 @@ function LiveMatch() {
     if (!editForm) return
     setEditSaving(true)
     setError('')
+    setActionError(null)
     const body = {
       athlete_id: editForm.for !== 'opponent' ? Number(editForm.for) : null,
       action_type: editForm.action_type,
@@ -777,7 +784,7 @@ function LiveMatch() {
         setHint('No connection — the edit is shown here and will sync automatically.')
         closeEdit()
       } else {
-        setError(err.message)
+        setActionError({ at: 'edit', text: err.message })
       }
     } finally {
       setEditSaving(false)
@@ -796,6 +803,7 @@ function LiveMatch() {
     if (!answer) return
     setEndingFixture(true)
     setError('')
+    setActionError(null)
     try {
       await apiRequest(`${apiPrefix}/${entityId}`, {
         method: 'PATCH',
@@ -804,7 +812,7 @@ function LiveMatch() {
       })
       navigate(summaryPath)
     } catch (err) {
-      setError(err.message)
+      setActionError({ at: 'end', text: err.message })
     } finally {
       setEndingFixture(false)
     }
@@ -881,6 +889,7 @@ function LiveMatch() {
     setFlow(null)
     setHint('')
     setError('')
+    setActionError(null)
     setSimLogs([])
     setSimMinute(0)
     setSimScore({ home: 0, away: 0 })
@@ -900,7 +909,7 @@ function LiveMatch() {
     } catch (err) {
       setSimBase(null)
       setSimulation({ mode, phase: 'error', posted: 0, total: 0, ratings: null, summary: null })
-      setError(err.message)
+      setActionError({ at: 'sim', text: err.message })
       return
     }
 
@@ -1013,6 +1022,9 @@ function LiveMatch() {
         )}
         <Link to={summaryPath} className="btn btn-ghost">Summary</Link>
       </div>
+      {(actionError?.at === 'end' || actionError?.at === 'sim') && (
+        <div className="roster-error live-inline-error" role="alert">{actionError.text}</div>
+      )}
     </div>
   )
 
@@ -1268,6 +1280,9 @@ function LiveMatch() {
               </button>
             ))}
           </div>
+          {actionError?.at === 'actions' && (
+            <div className="roster-error live-inline-error" role="alert">{actionError.text}</div>
+          )}
 
           {flow && (
             <div className="live-flow-panel">
@@ -1487,6 +1502,9 @@ function LiveMatch() {
                       />
                     </label>
                   </div>
+                  {actionError?.at === 'edit' && (
+                    <div className="roster-error live-inline-error" role="alert">{actionError.text}</div>
+                  )}
                   <div className="roster-form-actions">
                     <button type="button" className="btn btn-ghost" onClick={closeEdit}>
                       Cancel

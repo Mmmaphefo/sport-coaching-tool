@@ -25,6 +25,7 @@ Examples of AI-assisted work in the codebase include:
 - **Sign-in and deployment fixes (Opus 5.5):** Clerk sign-in/sign-up redirects, the onboarding guard, cold-start retries for the free Render tier, and the CI deploy job (deploy only the newest commit, no force-push, fail loudly on Cloudflare errors).
 - **Team comparison and reports (Opus 5.5):** the team-vs-opponents comparison, the season and match reports with CSV export, and substitution replay safety.
 - **Test coverage and security fixes (Opus 5.5):** new backend and frontend tests, including a database-outage test that found raw database errors being sent to the browser (fixed).
+- **Final-release refinements (Opus 5.5):** card limits per match and on stat corrections, "Mark everyone available", the 7-player minimum, live updates without refreshing (countdown, match clock, dashboard live cards), friendly proposals from Events, and showing errors next to the action, with their tests. See [Match-day Rules](../product/match-day-rules).
 - **Email migration to Brevo (Opus 5.5):** provider selection in `email.js`, reminders through the shared sender, and the safe user-facing error messages. See [Brevo](brevo).
 - **Documentation:** drafts of this page and the third-party service pages.
 

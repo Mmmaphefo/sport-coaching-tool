@@ -811,3 +811,13 @@
 [data-theme="dark"] .live-flow-hint {
   color: #e5737a;
 }
+
+/* A failed action shown beside where it was made (see actionError). */
+.live-header {
+  flex-wrap: wrap;
+}
+
+.live-inline-error {
+  flex-basis: 100%;
+  margin-top: 0.75rem;
+}

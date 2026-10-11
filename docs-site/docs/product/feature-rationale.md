@@ -179,3 +179,69 @@ The Gender feature allows squads to be tagged as Male or Female, and provides a 
 **Why it was prioritised:** This was raised by a team member (Kgethie) who identified that gender-based matchmaking is a fundamental fairness issue in sport. The original backlog did not account for this because the team is predominantly male and had not considered the scenario. After discussion, the team agreed that ignoring gender would make the product unsuitable for women's football — a growing segment of the sport.
 
 **Design decision:** The team deliberately chose not to include a "Mixed" option. Mixed teams exist in practice, but for the purposes of league matchmaking, a squad should compete in a category that reflects its primary composition. A Male/Female binary simplifies filtering and avoids ambiguity.
+
+---
+
+## E6 · Final-release refinements (October 2026)
+
+These changes came from client feedback in the final sprint. The exact rules
+are on the [Match-day Rules](match-day-rules) page.
+
+### Realistic card limits
+
+**What it does:** A player can receive at most one red and two yellow cards in
+a match, including when a log entry is edited; a coach's stat correction must
+keep red cards within appearances and yellow cards within twice the appearances.
+
+**Why:** Season totals are built from the live log, so a mistaken extra card
+(or an impossible correction) would show statistics that cannot happen in
+football. Enforcing the rule per match on the server keeps every total
+realistic, whichever device or offline replay the entry came from.
+
+### Mark everyone available
+
+**What it does:** One button marks the whole squad available for an event.
+Injured players are set unavailable instead, and named.
+
+**Why:** Most players are usually available, so recording them one by one was
+slow. Excluding injured players stops a stale "available" answer from letting
+a match start with a player who cannot play.
+
+### 7-player minimum to start a match
+
+**What it does:** A match or fixture can start once at least 7 players are
+available (previously 11 starters plus 5 substitutes, capped at the roster size).
+
+**Why:** Requiring a full 16-player match-day squad blocked real amateur
+matches, which often go ahead with a smaller squad. Seven is the minimum a
+side needs for a match to go ahead. Turning a shortfall at kick-off into an
+automatic 3–0 forfeit is planned future work.
+
+### Live updates without refreshing
+
+**What it does:** Match pages, the dashboard and the availability panel
+refresh themselves, show a kick-off countdown and a running match minute, and
+switch to live logging by themselves at kick-off.
+
+**Why:** Coaches and assistants follow matches on phones at the pitch; having
+to reload to see a new score, the kick-off, or other people's RSVPs made the
+app feel broken in exactly the moments it matters most.
+
+### Friendly proposals from Events
+
+**What it does:** A friendly against a registered squad is proposed from the
+normal **Schedule event** form (format Match, type *Friendly proposal*); the
+Friendlies tab now only lists proposals sent and received.
+
+**Why:** There were two separate places to arrange a match against another
+team. Putting both in the one scheduling form means a coach always schedules
+matches in the same place, and picking the opponent from registered squads
+avoids typos and links the match to the other squad's calendar.
+
+### Errors shown where they happen
+
+**What it does:** When an action is refused, the reason appears beside the
+button or row that was used, not at the top of the page.
+
+**Why:** On long pages (league fixtures, the schedule form) the old message
+appeared off-screen, so a refused **Start live** looked like nothing happened.

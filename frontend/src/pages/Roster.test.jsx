@@ -520,5 +520,16 @@ describe('Roster add/edit form', () => {
     })]))
     confirmSpy.mockRestore()
   })
+
+  it('shows a form error just above the form buttons, not at the top of the page', async () => {
+    setup()
+    const form = await openAddForm()
+    fireEvent.submit(form)
+    const alert = await within(form).findByRole('alert')
+    expect(alert).toHaveTextContent('Athlete name is required')
+    expect(alert.nextElementSibling).toHaveClass('roster-form-actions')
+    // Only shown once, in the form.
+    expect(screen.getAllByText('Athlete name is required')).toHaveLength(1)
+  })
 })
 

@@ -592,7 +592,9 @@ function Roster() {
           </div>
         )}
 
-        {error && <div className="roster-error">{error}</div>}
+        {/* While the add/edit form is open its errors are shown just above
+            the form's buttons instead (the form can be long). */}
+        {error && !(formOpen && isCoach) && <div className="roster-error">{error}</div>}
 
         <input
           ref={fileInputRef}
@@ -724,6 +726,7 @@ function Roster() {
                 </label>
               )}
             </div>
+            {error && <div className="roster-error" role="alert">{error}</div>}
             <div className="roster-form-actions">
               <button type="button" className="btn btn-ghost" onClick={closeForm}>
                 Cancel

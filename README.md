@@ -43,6 +43,9 @@ A full-stack web application for sports coaches and assistants to manage squads,
 
 ### Coaching Tools (Sprint 3)
 - Athlete comparison page with BMI and form
+- Match-day rules: a match starts once at least 7 players are available, injured players never count, "Mark everyone available" in one step, and realistic card limits (max one red and two yellows per match; corrected totals stay within appearances)
+- Live updates without refreshing: kick-off countdown, a running match clock, live scores on the dashboard ("My live" and "Opponent live"), and availability that updates by itself
+- Friendlies against registered squads are proposed from Events (format Match, type "Friendly proposal")
 - Team vs opponents comparison over any period, optionally against a second period (e.g. this season against last), with a per-opponent record
 - Printable season and match reports (Print / Save as PDF) with CSV export of results, player totals and match timelines
 - Seasons: named periods with their own record, per-match breakdown and printable report, plus a schedule generator that spreads opponents across the season and flags clashes without blocking

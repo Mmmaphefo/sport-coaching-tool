@@ -131,8 +131,9 @@ The `POST /api/events/:id/logs` endpoint accepts a `client_id` field. If the sam
 | `PATCH` | `/api/events/:id/logs/:logId` | Edit log entry |
 | `DELETE` | `/api/events/:id/logs/:logId` | Undo log entry (soft delete) |
 | `GET` | `/api/events/:id/rsvps` | All athlete availability responses |
-| `PUT` | `/api/events/:id/rsvps/mine` | Athlete sets own availability |
-| `PUT` | `/api/events/:id/rsvps/:athleteId` | Coach sets athlete availability |
+| `PUT` | `/api/events/:id/rsvps` | Coach/assistant marks the whole squad available (`{ status: 'available' }`); players injured on the match date are set unavailable and named in the reply |
+| `PUT` | `/api/events/:id/rsvps/mine` | Athlete sets own availability (an injured player cannot be set available) |
+| `PUT` | `/api/events/:id/rsvps/:athleteId` | Coach sets athlete availability (an injured player cannot be set available) |
 
 ### Fixtures (`/api/fixtures`)
 
@@ -187,13 +188,33 @@ The `POST /api/events/:id/logs` endpoint accepts a `client_id` field. If the sam
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/compare/athletes?ids=1,2` | Side-by-side athlete comparison stats |
+| `GET` | `/api/compare/athletes?a=&b=` | Side-by-side athlete comparison stats |
+| `GET` | `/api/compare/team?from=&to=[&vs_from=&vs_to=]` | Team vs opponents over a period, optionally against a second period |
+
+### Reports (`/api/reports`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/reports/season?from=&to=` | Season report: record, results, player totals, per-opponent record |
+| `GET` | `/api/reports/match/:kind/:id` | Match report for a regular match (`event`) or league fixture (`fixture`) |
+
+### Friendlies (`/api/friendlies`)
+
+Friendlies are proposed from the Events page (format Match, type *Friendly proposal*); see [Match-day Rules](../product/match-day-rules).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/friendlies` | Friendlies the squad has proposed or received |
+| `POST` | `/api/friendlies` | Propose a friendly to a registered squad (`opposing_squad_id`, `event_date`, `event_time`, `location`, `message`) |
+| `POST` | `/api/friendlies/:id/accept` | Accept a received proposal; the match is added to both calendars |
+| `POST` | `/api/friendlies/:id/decline` | Decline a received proposal |
+| `POST` | `/api/friendlies/:id/cancel` | Cancel a proposal you sent |
 
 ### Dashboard (`/api/dashboard`)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/dashboard/summary` | Dashboard summary: roster readiness, form, attack leaders, live events |
+| `GET` | `/api/dashboard/summary` | Dashboard summary: roster readiness, form, attack leaders, live events (each live match includes `startedAt` for the running clock) |
 
 ### Weather (`/api/weather`)
 
