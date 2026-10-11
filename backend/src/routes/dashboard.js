@@ -202,6 +202,9 @@ router.get('/summary', requireAuth(), async (req, res) => {
         awayLabel: ev.opponent || 'Opponent',
         homeScore: mine,
         awayScore: theirs,
+        // When the match clock started (falls back to the scheduled kickoff
+        // for matches that went live before started_at was recorded).
+        startedAt: ev.started_at || ev.event_date,
         link: `/live/${ev.id}`,
       };
     } else {
@@ -239,6 +242,7 @@ router.get('/summary', requireAuth(), async (req, res) => {
           awayLabel: fx.away_name,
           homeScore: home,
           awayScore: away,
+          startedAt: fx.started_at || fx.event_date,
           link: `/live/fixture/${fx.id}`,
         };
       }
@@ -249,7 +253,7 @@ router.get('/summary', requireAuth(), async (req, res) => {
     // dashboard shows the whole site's football, not just its own. Same
     // shape as the public landing's live list, so both tell one story.
     const otherLiveEventsResult = await pool.query(
-      `SELECT e.id, e.opponent, e.title, s.name AS squad_name
+      `SELECT e.id, e.opponent, e.title, e.started_at, e.event_date, s.name AS squad_name
        FROM events e
        JOIN squads s ON s.id = e.squad_id
        WHERE e.status = 'live' AND e.squad_id <> $1
@@ -259,7 +263,7 @@ router.get('/summary', requireAuth(), async (req, res) => {
       [squadId]
     );
     const otherLiveFixturesResult = await pool.query(
-      `SELECT f.id, f.home_squad_id, f.away_squad_id,
+      `SELECT f.id, f.home_squad_id, f.away_squad_id, f.started_at, f.event_date,
               home.name AS home_name, away.name AS away_name,
               e.title AS league_title
        FROM fixtures f
@@ -280,6 +284,7 @@ router.get('/summary', requireAuth(), async (req, res) => {
           id: ev.id,
           squadName: ev.squad_name,
           opponent: ev.opponent || ev.title || 'Opponent',
+          startedAt: ev.started_at || ev.event_date,
           ...(await computeEventScore(ev.id)),
         }))
       )),
@@ -290,6 +295,7 @@ router.get('/summary', requireAuth(), async (req, res) => {
           homeName: fx.home_name,
           awayName: fx.away_name,
           league: fx.league_title,
+          startedAt: fx.started_at || fx.event_date,
           ...(await computeFixtureScore(fx.id, fx.home_squad_id, fx.away_squad_id)),
         }))
       )),

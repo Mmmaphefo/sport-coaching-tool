@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import LiveMinute from '../components/LiveMinute'
+import { usePolling } from '../lib/liveUpdates'
 import { useAuth } from '@clerk/clerk-react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
@@ -6,6 +8,10 @@ import Loader from '../components/Loader'
 import { apiRequest } from '../lib/api'
 import { useCountUp } from '../lib/useCountUp'
 import './Dashboard.css'
+
+// How often the dashboard re-reads its summary (see the polling below).
+export const DASH_LIVE_POLL_MS = 10000
+export const DASH_IDLE_POLL_MS = 30000
 
 const PERIODS = [
   { key: '7d', label: '7D' },
@@ -145,14 +151,13 @@ function Dashboard() {
     loadTrends()
   }, [loadTrends])
 
-  // While any match is live (ours or elsewhere on the site), quietly
-  // re-poll the summary so the live-score cards track goals as they are
-  // logged in the match centre.
-  useEffect(() => {
-    if (!data?.liveEvent && !(data?.otherLive?.length > 0)) return undefined
-    const poll = setInterval(() => load(true), 10000)
-    return () => clearInterval(poll)
-  }, [data?.liveEvent, data?.otherLive, load])
+  // Quietly re-read the summary so the live cards stay current without a
+  // refresh: every 10s while any match is live (ours or another team's), and
+  // every 30s otherwise, so a match that kicks off appears by itself.
+  // Paused while the tab is hidden (lib/liveUpdates).
+  const anyLive = Boolean(data?.liveEvent) || data?.otherLive?.length > 0
+  const refreshSummary = useCallback(() => load(true), [load])
+  usePolling(refreshSummary, anyLive ? DASH_LIVE_POLL_MS : DASH_IDLE_POLL_MS, Boolean(data))
 
   // ---- Player view: derived personal data ----------------------------------
   // Everything is computed from the athlete stats payload's logs — the same
@@ -337,6 +342,7 @@ function Dashboard() {
               Live now
             </span>
             <span className="dash-live-mine-tag">My live</span>
+            <LiveMinute startedAt={liveEvent.startedAt} className="dash-live-minute" />
             <span className="dash-live-title">{liveEvent.title}</span>
           </div>
           <div className="dash-live-score-row">
@@ -368,6 +374,7 @@ function Dashboard() {
           <div className="dash-live-others-list">
             {otherLive.map((m) => (
               <div className="dash-live-others-row" key={`${m.kind}-${m.id}`}>
+                <LiveMinute startedAt={m.startedAt} className="dash-live-others-minute" />
                 {m.kind === 'match' ? (
                   <>
                     <span className="dash-live-others-team">{m.squadName}</span>

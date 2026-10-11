@@ -21,7 +21,14 @@ const emptyForm = {
   location: '',
   lat: null,
   lng: null,
+  // Set when the type is a friendly proposal: the registered squad invited.
+  opposing_squad_id: '',
+  message: '',
 }
+
+// The Type value that turns a match into a friendly proposal sent to another
+// registered squad (POST /api/friendlies) instead of a match on our calendar.
+const FRIENDLY_PROPOSAL = 'friendly_proposal'
 
 const statusLabel = {
   scheduled: 'Scheduled',
@@ -67,6 +74,10 @@ function Events() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [squad, setSquad] = useState(null)
+  // Errors from the schedule form, shown just above its buttons.
+  const [formError, setFormError] = useState('')
+  // Registered squads a friendly can be proposed to (loaded when needed).
+  const [opponentSquads, setOpponentSquads] = useState(null)
 
   // --- List / Calendar toggle state ---
   const [viewMode, setViewMode] = useState('list') // 'list' | 'calendar'
@@ -141,24 +152,85 @@ function Events() {
   function closeForm() {
     setFormOpen(false)
     setForm(emptyForm)
+    setFormError('')
+  }
+
+  const isFriendlyProposal = form.format === 'match' && form.event_type === FRIENDLY_PROPOSAL
+
+  // Load the squads that can be invited the first time "Friendly proposal" is
+  // chosen: the public directory, without our own squad.
+  useEffect(() => {
+    if (!isFriendlyProposal || opponentSquads !== null) return
+    let cancelled = false
+    apiRequest('/api/public/squads', { getToken })
+      .then((directory) => {
+        if (cancelled) return
+        const list = Array.isArray(directory) ? directory : directory?.squads || []
+        setOpponentSquads(list.filter((s) => s.id !== squad?.id))
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setOpponentSquads([])
+          setFormError(`Couldn't load the registered squads: ${err.message}`)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isFriendlyProposal, opponentSquads, squad?.id, getToken])
+
+  // A friendly proposal goes to the other squad for them to accept; it lands
+  // on both calendars once they do (see the Friendlies tab).
+  async function sendFriendlyProposal() {
+    if (!form.opposing_squad_id) {
+      setFormError('Choose the registered squad to propose the friendly to')
+      return
+    }
+    const [eventDate, eventTime] = form.event_date.split('T')
+    setSaving(true)
+    setFormError('')
+    try {
+      await apiRequest('/api/friendlies', {
+        method: 'POST',
+        body: {
+          opposing_squad_id: Number(form.opposing_squad_id),
+          event_date: eventDate,
+          event_time: eventTime || undefined,
+          location: form.location.trim() || null,
+          message: form.message.trim() || null,
+        },
+        getToken,
+      })
+      closeForm()
+      navigate('/friendlies')
+    } catch (err) {
+      setFormError(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.event_date) {
-      setError('Event date is required')
+      setFormError('Event date is required')
       return
     }
 
     if (form.format !== 'training' && rosterBelowMinimum) {
-      setError(
+      setFormError(
         `Your roster needs at least ${squad.min_roster_size} athletes to schedule a ${form.format} (you currently have ${squad.athlete_count}).`
       )
       return
     }
 
+    if (isFriendlyProposal) {
+      await sendFriendlyProposal()
+      return
+    }
+
     setSaving(true)
-    setError('')
+    setFormError('')
 
     const isLeague = form.format === 'league' || form.format === 'tournament'
     const body = {
@@ -216,7 +288,7 @@ function Events() {
       closeForm()
       navigate(`/events/${created.id}`)
     } catch (err) {
-      setError(err.message)
+      setFormError(err.message)
     } finally {
       setSaving(false)
     }
@@ -474,7 +546,11 @@ function Events() {
               Format
               <select
                 value={form.format}
-                onChange={(e) => setForm({ ...form, format: e.target.value })}
+                onChange={(e) => setForm({
+                  ...form,
+                  format: e.target.value,
+                  event_type: e.target.value !== 'match' && form.event_type === FRIENDLY_PROPOSAL ? 'match' : form.event_type,
+                })}
               >
                 <option value="match">Match</option>
                 <option value="training">Training</option>
@@ -491,6 +567,25 @@ function Events() {
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   placeholder="e.g. Winter League 2026"
                 />
+              </label>
+            ) : isFriendlyProposal ? (
+              <label>
+                Opponent (registered squad)
+                <select
+                  value={form.opposing_squad_id}
+                  onChange={(e) => setForm({ ...form, opposing_squad_id: e.target.value })}
+                  disabled={opponentSquads === null}
+                >
+                  <option value="">
+                    {opponentSquads === null ? 'Loading squads…' : 'Choose a squad…'}
+                  </option>
+                  {(opponentSquads || []).map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                {opponentSquads !== null && opponentSquads.length === 0 && (
+                  <span className="event-form-hint">No other registered squads are listed publicly yet.</span>
+                )}
               </label>
             ) : (
               <label>
@@ -512,6 +607,9 @@ function Events() {
                 >
                   <option value="match">Match</option>
                   <option value="training">Training</option>
+                  {form.format === 'match' && (
+                    <option value={FRIENDLY_PROPOSAL}>Friendly proposal</option>
+                  )}
                 </select>
               </label>
             )}
@@ -577,6 +675,23 @@ function Events() {
           </div>
 
           <WeatherWidget location={form.location} latitude={form.lat} longitude={form.lng} compact />
+          {isFriendlyProposal && (
+            <label className="roster-form-wide">
+              Message to their coach (optional)
+              <textarea
+                rows="2"
+                maxLength="1000"
+                value={form.message}
+                onChange={(e) => setForm({ ...form, message: e.target.value })}
+              />
+            </label>
+          )}
+          {isFriendlyProposal && (
+            <p className="event-form-hint">
+              The squad you choose is sent a friendly proposal. Once they accept, the match appears on both calendars.
+            </p>
+          )}
+          {formError && <div className="roster-error" role="alert">{formError}</div>}
           <div className="roster-form-actions">
             <button type="button" className="btn btn-ghost" onClick={closeForm}>
               Cancel
@@ -591,7 +706,7 @@ function Events() {
                   : undefined
               }
             >
-              {saving ? 'Saving...' : 'Create event'}
+              {saving ? 'Saving...' : isFriendlyProposal ? 'Send friendly proposal' : 'Create event'}
             </button>
           </div>
         </form>

@@ -234,6 +234,26 @@ describe('dashboard summary (/api/dashboard/summary)', () => {
     expect(res.body).toBeTypeOf('object')
   })
 
+  test('live matches carry when they started, for the running clock', async () => {
+    const started = new Date(Date.now() - 23 * 60 * 1000)
+    await pool.query(
+      `INSERT INTO events (squad_id, title, event_type, format, event_date, status, opponent, started_at)
+       VALUES ($1, 'Live match', 'match', 'match', now() - interval '30 minutes', 'live', 'City', $2)`,
+      [squadId, started]
+    )
+    const other = (await seedCoach('other_coach')).squadId
+    await pool.query(
+      `INSERT INTO events (squad_id, title, event_type, format, event_date, status, opponent)
+       VALUES ($1, 'Their match', 'match', 'match', now() - interval '10 minutes', 'live', 'Rovers')`,
+      [other]
+    )
+
+    const res = await as().get('/api/dashboard/summary')
+    expect(new Date(res.body.liveEvent.startedAt).getTime()).toBe(started.getTime())
+    // No recorded start: falls back to the scheduled kickoff.
+    expect(res.body.otherLive[0].startedAt).toBeTruthy()
+  })
+
   test('works for a brand-new squad with no data', async () => {
     const res = await as().get('/api/dashboard/summary')
     expect(res.status).toBe(200)

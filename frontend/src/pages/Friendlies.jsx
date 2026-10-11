@@ -42,29 +42,14 @@ function Friendlies() {
   const { getToken } = useAuth()
   const confirm = useConfirm()
   const [friendlies, setFriendlies] = useState(null)
-  const [squads, setSquads] = useState([])
-  const [mySquadId, setMySquadId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [form, setForm] = useState({ opponent: '', date: '', time: '15:00', location: '', message: '' })
-  const [formError, setFormError] = useState('')
-  const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
+  // Proposing now happens from Events (format Match, type "Friendly
+  // proposal"), so this page only needs the proposals themselves.
   const load = useCallback(async () => {
-    // The directory is the same public one the leaderboard uses — the route
-    // ignores the token, but apiRequest always attaches one.
-    const [list, directory, me] = await Promise.all([
-      apiRequest('/api/friendlies', { getToken }),
-      apiRequest('/api/public/squads', { getToken }).catch(() => null),
-      apiRequest('/api/account/me', { getToken }),
-    ])
-    setFriendlies(list)
-    // The directory route answers { squads, live } — see PublicLanding for
-    // the same parsing. Accept a bare array too, but never trust the shape
-    // blindly: a non-array here whitescreened the whole app in production.
-    setSquads(Array.isArray(directory) ? directory : directory?.squads || [])
-    setMySquadId(me.squadId ?? null)
+    setFriendlies(await apiRequest('/api/friendlies', { getToken }))
   }, [getToken])
 
   useEffect(() => {
@@ -93,38 +78,6 @@ function Friendlies() {
 
   const otherName = (f) => (f.direction === 'outgoing' ? f.opposing_squad : f.proposing_squad)
 
-  async function propose(e) {
-    e.preventDefault()
-    if (!form.opponent) {
-      setFormError('Pick a squad to play against.')
-      return
-    }
-    if (!form.date) {
-      setFormError('Pick a kickoff date.')
-      return
-    }
-    setSaving(true)
-    setFormError('')
-    try {
-      await apiRequest('/api/friendlies', {
-        method: 'POST',
-        body: {
-          opposing_squad_id: Number(form.opponent),
-          event_date: form.date,
-          event_time: form.time || null,
-          location: form.location.trim() || null,
-          message: form.message.trim() || null,
-        },
-        getToken,
-      })
-      setForm((f) => ({ ...f, opponent: '', date: '', location: '', message: '' }))
-      await refresh()
-    } catch (err) {
-      setFormError(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
 
   async function respond(friendly, action) {
     const proceed = await confirm({
@@ -146,14 +99,13 @@ function Friendlies() {
   }
 
   const incoming = (friendlies || []).filter((f) => f.status === 'proposed' && f.direction === 'incoming')
-  const directory = squads.filter((s) => String(s.id) !== String(mySquadId))
 
   return (
     <Layout>
       <div className="fr-page">
         <header className="fr-head">
           <h1>Friendlies</h1>
-          <p>Propose a match to a squad from the public directory — they accept or decline, and the match lands on both calendars.</p>
+          <p>Friendly proposals you have sent and received — the other squad accepts or declines, and an accepted match lands on both calendars.</p>
         </header>
 
         {error && <div className="fr-error" role="alert">{error}</div>}
@@ -238,45 +190,11 @@ function Friendlies() {
 
         <section className="fr-card" aria-labelledby="fr-new-title">
           <h2 id="fr-new-title">Propose a friendly</h2>
-          {directory.length === 0 ? (
-            <p className="fr-muted">No other public squads yet — squads appear here once they list themselves on the public leaderboard.</p>
-          ) : (
-            <form className="fr-form" onSubmit={propose}>
-              <label className="fr-field">
-                Opponent
-                <select value={form.opponent} onChange={(e) => setForm((f) => ({ ...f, opponent: e.target.value }))}>
-                  <option value="">Pick a squad…</option>
-                  {directory.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} · {s.athlete_count} players</option>
-                  ))}
-                </select>
-              </label>
-              <label className="fr-field">
-                Kickoff date
-                <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-              </label>
-              <label className="fr-field">
-                Kickoff time
-                <input type="time" value={form.time} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))} />
-              </label>
-              <label className="fr-field fr-field-wide">
-                Venue
-                <input type="text" maxLength="200" value={form.location} placeholder="Home Ground (optional)"
-                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} />
-              </label>
-              <label className="fr-field fr-field-wide">
-                Message
-                <textarea rows="2" maxLength="1000" value={form.message} placeholder="Anything you want to tell their coach (optional)"
-                  onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))} />
-              </label>
-              <div className="fr-form-actions">
-                <button type="submit" className="btn btn-gold" disabled={saving}>
-                  {saving ? 'Sending...' : 'Send proposal'}
-                </button>
-              </div>
-            </form>
-          )}
-          {formError && <div className="fr-error" role="alert">{formError}</div>}
+          <p className="fr-muted">
+            Friendlies are proposed from <Link to="/events">Events</Link>: schedule an event with
+            format <strong>Match</strong>, set the type to <strong>Friendly proposal</strong>, and pick a
+            registered squad as the opponent. Proposals you send and receive appear on this page.
+          </p>
         </section>
       </div>
     </Layout>

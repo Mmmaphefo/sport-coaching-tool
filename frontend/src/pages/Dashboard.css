@@ -1004,3 +1004,22 @@
   color: var(--color-ink);
   margin-right: 3px;
 }
+/* Running match minute on the live cards (components/LiveMinute). */
+.live-minute-tag {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.dash-live-minute {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(208, 255, 65, 0.18);
+  color: var(--color-lime-deep, #a8c233);
+  font-size: 0.85rem;
+}
+
+.dash-live-others-minute {
+  min-width: 2.5rem;
+  color: var(--color-ink-soft);
+  font-size: 0.85rem;
+}

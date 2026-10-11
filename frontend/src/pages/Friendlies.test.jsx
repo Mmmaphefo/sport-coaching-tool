@@ -50,7 +50,7 @@ beforeEach(() => {
 })
 
 describe('Friendlies', () => {
-  it('shows incoming proposals, the history table and the directory picker without own squad', async () => {
+  it('shows incoming proposals and the history table, and points to Events for proposing', async () => {
     routeCalls({
       '/api/friendlies': friendliesList,
       '/api/public/squads': { squads: directory },
@@ -78,51 +78,9 @@ describe('Friendlies', () => {
     const open = screen.getByRole('link', { name: 'Open' })
     expect(open).toHaveAttribute('href', '/events/42')
 
-    // The picker lists the other public squads but never my own.
-    const options = screen.getByLabelText('Opponent')
-    expect(options.textContent).toContain('Rovers FC · 18 players')
-    expect(options.textContent).toContain('United FC · 15 players')
-    expect(options.textContent).not.toContain('Test Squad')
-  })
-
-  it('proposes a friendly and refreshes the list', async () => {
-    let proposals = 0
-    routeCalls({
-      '/api/friendlies': (opts) => {
-        if (opts.method === 'POST') {
-          proposals += 1
-          return { id: 6, status: 'proposed', direction: 'outgoing' }
-        }
-        return proposals > 0 ? [...friendliesList] : friendliesList
-      },
-      '/api/public/squads': { squads: directory },
-      '/api/account/me': me,
-    })
-    render(<MemoryRouter><Friendlies /></MemoryRouter>)
-    await screen.findByRole('heading', { name: 'Waiting for your answer' })
-
-    fireEvent.change(screen.getByLabelText('Opponent'), { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText('Kickoff date'), { target: { value: '2026-10-20' } })
-    fireEvent.change(screen.getByLabelText('Venue'), { target: { value: 'Home Ground' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send proposal' }))
-
-    await waitFor(() => {
-      expect(mocks.apiRequest).toHaveBeenCalledWith('/api/friendlies', {
-        method: 'POST',
-        body: {
-          opposing_squad_id: 2,
-          event_date: '2026-10-20',
-          event_time: '15:00',
-          location: 'Home Ground',
-          message: null,
-        },
-        getToken: mocks.getToken,
-      })
-    })
-    // Initial load, the proposal itself, then the refresh.
-    await waitFor(() => {
-      expect(mocks.apiRequest.mock.calls.filter((c) => c[0] === '/api/friendlies').length).toBe(3)
-    })
+    // Proposing moved to Events: the page points there instead of offering a form.
+    expect(screen.queryByLabelText('Opponent')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Events' })).toHaveAttribute('href', '/events')
   })
 
   it('accepts an incoming proposal after confirming and links the new match', async () => {
@@ -162,25 +120,4 @@ describe('Friendlies', () => {
     expect(links).toContain('/events/12')
   })
 
-  it('surfaces propose errors under the form', async () => {
-    routeCalls({
-      '/api/friendlies': (opts) => {
-        if (opts.method === 'POST') {
-          throw new Error('There is already an open proposal between these squads')
-        }
-        return friendliesList
-      },
-      '/api/public/squads': { squads: directory },
-      '/api/account/me': me,
-    })
-    render(<MemoryRouter><Friendlies /></MemoryRouter>)
-    await screen.findByRole('heading', { name: 'Waiting for your answer' })
-
-    fireEvent.change(screen.getByLabelText('Opponent'), { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText('Kickoff date'), { target: { value: '2026-10-20' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send proposal' }))
-
-    expect(await screen.findByText(/already an open proposal/)).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toBeInTheDocument()
-  })
 })
