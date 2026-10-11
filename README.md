@@ -4,6 +4,8 @@
 
 A full-stack web application for sports coaches and assistants to manage squads, schedule events, log live match data, and run multi-team leagues and tournaments.
 
+**Live app:** [kickstat.pages.dev](https://kickstat.pages.dev) · **Docs:** [kickstat-docs-v2.netlify.app](https://kickstat-docs-v2.netlify.app) · **API:** [kickstat-api-i2rc.onrender.com](https://kickstat-api-i2rc.onrender.com) · **API reference (Swagger):** [/api/docs](https://kickstat-api-i2rc.onrender.com/api/docs)
+
 ## Features
 
 ### Squad Management
