@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import Layout from '../components/Layout'
@@ -12,8 +12,14 @@ import AddressSearchInput from '../components/AddressSearchInput'
 import ClashBanner from '../components/ClashBanner'
 import RsvpPanel from '../components/RsvpPanel'
 import PostMatchSummary from '../components/PostMatchSummary'
+import KickoffCountdown from '../components/KickoffCountdown'
+import { usePolling } from '../lib/liveUpdates'
 import { useCountUp } from '../lib/useCountUp'
 import './EventDetail.css'
+
+// How often the page re-reads the event (see the polling effect below).
+export const LIVE_POLL_MS = 5000
+export const WAITING_POLL_MS = 15000
 
 const emptyLogForm = {
   for: '', // athlete id as a string, or 'opponent'
@@ -227,6 +233,7 @@ function SimpleEventDetail({ detail, athletes, id, getToken, onChange, isAthlete
           </span>
            <h1>{event.opponent || 'Training session'}</h1>
           <p className="event-detail-date">{new Date(event.event_date).toLocaleString()}</p>
+          {event.status === 'scheduled' && <KickoffCountdown kickoff={event.event_date} />}
           {event.location && <p className="event-detail-location">📍 {event.location}</p>}
         </div>
         <div className="event-detail-actions">
@@ -488,12 +495,15 @@ function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
   const [dateDrafts, setDateDrafts] = useState({})
   const [savingFixtureDateId, setSavingFixtureDateId] = useState(null)
   const [error, setError] = useState('')
+  // { id, text }: a failed Save kickoff / Start live, shown under that fixture
+  // (the page-level error sits at the top, out of view when scrolled down).
+  const [fixtureError, setFixtureError] = useState(null)
 
   async function handleSaveFixtureDate(fixtureId) {
     const value = dateDrafts[fixtureId] || ''
     if (!value.trim()) return
     setSavingFixtureDateId(fixtureId)
-    setError('')
+    setFixtureError(null)
     try {
       await apiRequest(`/api/fixtures/${fixtureId}`, {
         method: 'PATCH',
@@ -507,7 +517,7 @@ function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
       })
       onChange()
     } catch (err) {
-      setError(err.message)
+      setFixtureError({ id: fixtureId, text: err.message })
     } finally {
       setSavingFixtureDateId(null)
     }
@@ -528,7 +538,7 @@ function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
 
   async function handleStartFixture(fixtureId) {
     setStartingFixtureId(fixtureId)
-    setError('')
+    setFixtureError(null)
     try {
       await apiRequest(`/api/fixtures/${fixtureId}`, {
         method: 'PATCH',
@@ -537,7 +547,7 @@ function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
       })
       navigate(`/live/fixture/${fixtureId}`)
     } catch (err) {
-      setError(err.message)
+      setFixtureError({ id: fixtureId, text: err.message })
     } finally {
       setStartingFixtureId(null)
     }
@@ -862,6 +872,9 @@ function LeagueDetail({ detail, id, getToken, onChange, isAthlete = false }) {
                       </Link>
                     )}
                   </div>
+                  {fixtureError?.id === fixture.id && (
+                    <p className="lg-fixture-error" role="alert">{fixtureError.text}</p>
+                  )}
                 </div>
               )
             })}
@@ -950,7 +963,6 @@ function EventDetail() {
   const [error, setError] = useState('')
   const [role, setRole] = useState(null)
 
-  const pollRef = useRef(null)
 
   useEffect(() => {
     let cancelled = false
@@ -992,17 +1004,17 @@ function EventDetail() {
     loadAthletes()
   }, [loadDetail, loadAthletes])
 
-  // Poll while a simple event is live so the dashboard/timeline stays near-real-time.
-  useEffect(() => {
-    if (
-      detail?.event?.status === 'live' &&
-      detail?.event?.format !== 'league' &&
-      detail?.event?.format !== 'tournament'
-    ) {
-      pollRef.current = setInterval(loadDetail, 5000)
-      return () => clearInterval(pollRef.current)
-    }
-  }, [detail?.event?.status, detail?.event?.format, loadDetail])
+  // Keep the page current without a refresh (lib/liveUpdates):
+  //  - a match or a league with something live: every 5s (score, timeline);
+  //  - a match waiting for kickoff, or a league still in progress: every 15s,
+  //    so the page notices the kickoff and newly started fixtures.
+  // Finished or cancelled events are not polled. Paused while the tab is hidden.
+  const status = detail?.event?.status
+  const isCompetition = detail?.event?.format === 'league' || detail?.event?.format === 'tournament'
+  const anyFixtureLive = (detail?.fixtures || []).some((f) => f.status === 'live')
+  const somethingLive = status === 'live' || (isCompetition && anyFixtureLive)
+  const stillGoing = Boolean(status) && status !== 'completed' && status !== 'cancelled'
+  usePolling(loadDetail, somethingLive ? LIVE_POLL_MS : WAITING_POLL_MS, somethingLive || stillGoing)
 
   if (loading) {
     return (

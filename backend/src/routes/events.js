@@ -15,7 +15,7 @@ const { buildLineupSuggestions } = require('../lib/lineupSuggestions');
 const { simulateMatch } = require('../lib/match-simulation');
 const { findClashes } = require('../lib/clashes');
 const { assertMatchDayRules } = require('../lib/soccerRules');
-const { getMatchAvailability, availabilityError } = require('../lib/availability');
+const { getMatchAvailability, availabilityError, injuredOnDateSql, isInjuredOn } = require('../lib/availability');
 const { parseLogMeta } = require('../lib/logMeta');
 const { applyLogEdit } = require('../lib/logEdit');
 const { matchCardLimitError } = require('../lib/cardRules');
@@ -1545,6 +1545,12 @@ router.put('/:id/rsvps/mine', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: "status must be 'available', 'unavailable', or 'maybe'" });
     }
 
+    if (status === 'available' && await isInjuredOn(pool, athleteId, event.event_date)) {
+      return res.status(400).json({
+        error: 'This player is injured on the match date, so they can\'t be marked available. Clear or update the injury first.',
+      });
+    }
+
     const result = await pool.query(
       `INSERT INTO event_rsvps (event_id, athlete_id, status, note, responded_by, responded_at)
        VALUES ($1, $2, $3, $4, $5, now())
@@ -1582,31 +1588,34 @@ router.put('/:id/rsvps', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: "Only status 'available' can be set for the whole squad" });
     }
 
-    // Injured on the event's date: not cleared, already sustained, and not
-    // yet past the expected return. `dateParam` is the query's $n for the date.
-    const injuredOnTheDay = (dateParam) => `EXISTS (
-      SELECT 1 FROM injuries i
-       WHERE i.athlete_id = a.id AND i.cleared_at IS NULL
-         AND i.date_sustained <= ${dateParam}::date
-         AND (i.return_date IS NULL OR i.return_date > ${dateParam}::date))`;
-
+    // Everyone fit on the event's date becomes available; anyone injured on
+    // that date becomes unavailable (noted as injured), so an old
+    // 'available' answer can't survive an injury.
     const updated = await pool.query(
       `INSERT INTO event_rsvps (event_id, athlete_id, status, note, responded_by, responded_at)
        SELECT $1, a.id, 'available', NULL, $2, now()
          FROM athletes a
-        WHERE a.squad_id = $3 AND NOT ${injuredOnTheDay('$4')}
+        WHERE a.squad_id = $3 AND NOT ${injuredOnDateSql('a', '$4')}
        ON CONFLICT (event_id, athlete_id)
        DO UPDATE SET status = 'available', note = NULL, responded_by = $2, responded_at = now(), updated_at = now()
        RETURNING athlete_id`,
       [req.params.id, userId, squadId, event.event_date]
     );
     const injured = await pool.query(
-      `SELECT a.id, a.name FROM athletes a WHERE a.squad_id = $1 AND ${injuredOnTheDay('$2')}
-        ORDER BY a.name`,
-      [squadId, event.event_date]
+      `INSERT INTO event_rsvps (event_id, athlete_id, status, note, responded_by, responded_at)
+       SELECT $1, a.id, 'unavailable', 'Injured', $2, now()
+         FROM athletes a
+        WHERE a.squad_id = $3 AND ${injuredOnDateSql('a', '$4')}
+       ON CONFLICT (event_id, athlete_id)
+       DO UPDATE SET status = 'unavailable', note = 'Injured', responded_by = $2, responded_at = now(), updated_at = now()
+       RETURNING athlete_id`,
+      [req.params.id, userId, squadId, event.event_date]
     );
+    const injuredNames = injured.rows.length
+      ? (await pool.query('SELECT id, name FROM athletes WHERE id = ANY($1::int[]) ORDER BY name', [injured.rows.map((r) => r.athlete_id)])).rows
+      : [];
 
-    res.json({ updated: updated.rowCount, skippedInjured: injured.rows });
+    res.json({ updated: updated.rowCount, skippedInjured: injuredNames });
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });
@@ -1640,6 +1649,12 @@ router.put('/:id/rsvps/:athleteId', requireAuth(), async (req, res) => {
     const { status, note } = req.body;
     if (!['available', 'unavailable', 'maybe'].includes(status)) {
       return res.status(400).json({ error: "status must be 'available', 'unavailable', or 'maybe'" });
+    }
+
+    if (status === 'available' && await isInjuredOn(pool, req.params.athleteId, event.event_date)) {
+      return res.status(400).json({
+        error: 'This player is injured on the match date, so they can\'t be marked available. Clear or update the injury first.',
+      });
     }
 
     const result = await pool.query(

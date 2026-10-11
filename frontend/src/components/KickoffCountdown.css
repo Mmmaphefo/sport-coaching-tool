@@ -1,0 +1,10 @@
+.kickoff-countdown {
+  margin: 0.4rem 0 0;
+  font-size: 0.95rem;
+  color: var(--color-ink-soft);
+}
+
+.kickoff-countdown strong {
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}

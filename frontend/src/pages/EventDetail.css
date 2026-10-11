@@ -1088,3 +1088,24 @@
 [data-theme="dark"] .lg-fixture-row-live {
   border-left-color: #e5737a;
 }
+
+/* A failed Save kickoff / Start live, shown right under that fixture. */
+.lg-fixture-row {
+  flex-wrap: wrap;
+}
+
+.lg-fixture-error {
+  flex-basis: 100%;
+  grid-column: 1 / -1;
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid #c0392b;
+  background: rgba(192, 57, 43, 0.08);
+  color: #c0392b;
+  font-size: 0.9rem;
+}
+
+[data-theme="dark"] .lg-fixture-error {
+  color: #f08a80;
+  border-left-color: #f08a80;
+}

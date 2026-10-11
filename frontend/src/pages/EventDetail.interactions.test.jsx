@@ -290,5 +290,28 @@ describe('EventDetail interactions', () => {
     expect(await screen.findByText('LIVE FIXTURE PAGE')).toBeInTheDocument()
     expect(writes()).toContainEqual(expect.objectContaining({ method: 'PATCH', body: { status: 'live' } }))
   }, 20000)
+
+  it('shows a refused Start live right under that fixture, not at the top of the page', async () => {
+    setup(leaguePayload, { failOn: (m) => m === 'PATCH' })
+    renderWithLive('/events/5')
+    const button = await screen.findByRole('button', { name: /Start live/i }, { timeout: 15000 })
+    fireEvent.click(button)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Server said no')
+    expect(button.closest('.lg-fixture-row')).toContainElement(alert)
+    expect(screen.queryByText('LIVE FIXTURE PAGE')).not.toBeInTheDocument()
+  }, 20000)
+
+  it('shows a refused kickoff time right under that fixture', async () => {
+    setup(leaguePayload, { failOn: (m) => m === 'PATCH' })
+    renderWithLive('/events/5')
+    const kickoff = await screen.findByLabelText(/Fixture kickoff/i, {}, { timeout: 15000 })
+    fireEvent.change(kickoff, { target: { value: '2026-10-25T15:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save kickoff/i }))
+
+    const alert = await screen.findByRole('alert')
+    expect(kickoff.closest('.lg-fixture-row')).toContainElement(alert)
+  }, 20000)
 })
 

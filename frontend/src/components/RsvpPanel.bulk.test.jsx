@@ -36,13 +36,13 @@ afterEach(() => {
 })
 
 describe('RsvpPanel: mark everyone available', () => {
-  it('marks the whole squad in one request and reports injured players it left out', async () => {
+  it('marks the whole squad in one request and sets injured players unavailable and names them', async () => {
     api({ bulk: { updated: 9, skippedInjured: [{ id: 4, name: 'Alex Injured' }] } })
     render(<RsvpPanel eventId={9} getToken={vi.fn()} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Mark everyone available' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Marked 9 players available. Not marked (injured): Alex Injured.'
+      'Marked 9 players available. Set to unavailable (injured): Alex Injured.'
     )
     expect(mocks.apiRequest).toHaveBeenCalledWith('/api/events/9/rsvps', expect.objectContaining({
       method: 'PUT', body: { status: 'available' },

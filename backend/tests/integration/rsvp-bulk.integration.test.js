@@ -7,6 +7,7 @@ import request from 'supertest'
 import express from 'express'
 import { pool, resetDatabase, seedCoach } from './setup'
 import eventsRouter from '../../src/routes/events'
+import { getMatchAvailability } from '../../src/lib/availability'
 
 const app = express()
 app.use(express.json())
@@ -61,18 +62,22 @@ async function statuses(eventId) {
 }
 
 describe('PUT /api/events/:id/rsvps (mark everyone available)', () => {
-  test('marks everyone available, overriding earlier answers, but skips the injured', async () => {
+  test('marks everyone available, overriding earlier answers, and sets the injured unavailable', async () => {
     await athlete('Alpha')
     const bravo = await athlete('Bravo')
     const injured = await athlete('Charlie')
     await injure(injured)
     const ev = await match()
     await pool.query(`INSERT INTO event_rsvps (event_id, athlete_id, status) VALUES ($1, $2, 'unavailable')`, [ev, bravo])
+    // The injured player had answered 'available' before getting injured.
+    await pool.query(`INSERT INTO event_rsvps (event_id, athlete_id, status) VALUES ($1, $2, 'available')`, [ev, injured])
 
     const res = await put(`/api/events/${ev}/rsvps`, { status: 'available' })
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ updated: 2, skippedInjured: [{ id: injured, name: 'Charlie' }] })
-    expect(await statuses(ev)).toEqual({ Alpha: 'available', Bravo: 'available', Charlie: null })
+    expect(await statuses(ev)).toEqual({ Alpha: 'available', Bravo: 'available', Charlie: 'unavailable' })
+    const note = await pool.query('SELECT note FROM event_rsvps WHERE event_id = $1 AND athlete_id = $2', [ev, injured])
+    expect(note.rows[0].note).toBe('Injured')
   })
 
   test('includes players whose injury is cleared, or who are back by the match date', async () => {
@@ -101,4 +106,29 @@ describe('PUT /api/events/:id/rsvps (mark everyone available)', () => {
     )).rows[0].id
     expect((await put(`/api/events/${theirs}/rsvps`, { status: 'available' })).status).toBe(404)
   })
+
+  test('an injured player cannot be marked available one at a time', async () => {
+    const injured = await athlete('Charlie')
+    await injure(injured)
+    const ev = await match()
+    const res = await put(`/api/events/${ev}/rsvps/${injured}`, { status: 'available' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/injured on the match date/)
+    // Other answers are still fine.
+    expect((await put(`/api/events/${ev}/rsvps/${injured}`, { status: 'unavailable' })).status).toBe(200)
+  })
+
+  test("an injured player's old 'available' answer does not count towards kickoff", async () => {
+    const fit = await athlete('Fit')
+    const injured = await athlete('Injured')
+    await injure(injured)
+    const ev = await match()
+    await pool.query(
+      `INSERT INTO event_rsvps (event_id, athlete_id, status) VALUES ($1, $2, 'available'), ($1, $3, 'available')`,
+      [ev, fit, injured]
+    )
+    const availability = await getMatchAvailability(pool, { eventId: ev, squadId })
+    expect(availability.available).toBe(1)
+  })
 })
+

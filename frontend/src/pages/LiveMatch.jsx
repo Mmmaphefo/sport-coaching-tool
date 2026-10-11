@@ -4,6 +4,8 @@ import { useParams, Link, Navigate, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Loader from '../components/Loader'
 import Pitch from '../components/Pitch'
+import KickoffCountdown from '../components/KickoffCountdown'
+import { usePolling } from '../lib/liveUpdates'
 import LineupWizard from '../components/LineupWizard'
 import { apiRequest, isRetryableError } from '../lib/api'
 import {
@@ -33,6 +35,10 @@ import {
 } from '../lib/lineups'
 import './LiveMatch.css'
 
+// How often the page re-reads the match: while live, and before kickoff.
+export const LIVE_POLL_MS = 3000
+export const PRE_MATCH_POLL_MS = 10000
+
 // Approximation: elapsed minutes since the scheduled kickoff time.
 function elapsedMinutes(eventDate) {
   if (!eventDate) return 0
@@ -54,7 +60,6 @@ function useMatchDetail() {
   const [error, setError] = useState('')
   const [clockMinute, setClockMinute] = useState(0)
 
-  const pollRef = useRef(null)
   const clockRef = useRef(null)
   const prevTimelineRef = useRef([])
   const [newEntryIds, setNewEntryIds] = useState(new Set())
@@ -87,12 +92,14 @@ function useMatchDetail() {
   // event started early/late or without a time.
   const clockAnchor = activeStartedAt || activeDate
 
-  useEffect(() => {
-    if (activeStatus === 'live') {
-      pollRef.current = setInterval(loadDetail, 3000)
-      return () => clearInterval(pollRef.current)
-    }
-  }, [activeStatus, loadDetail])
+  // Keep the score, timeline and status current without a refresh: every
+  // 3s while live, and every 10s before kickoff so the page notices the
+  // match going live. Paused while the tab is hidden (lib/liveUpdates).
+  usePolling(
+    loadDetail,
+    activeStatus === 'live' ? LIVE_POLL_MS : PRE_MATCH_POLL_MS,
+    activeStatus === 'live' || activeStatus === 'scheduled'
+  )
 
   // Track newly added timeline entries for flash animation
   useEffect(() => {
@@ -112,9 +119,11 @@ function useMatchDetail() {
   useEffect(() => {
     if (!clockAnchor) return
     setClockMinute(elapsedMinutes(clockAnchor))
+    // Ticks every second so the minute changes exactly on the boundary
+    // (it used to tick every 30s, so the clock could lag by up to half a minute).
     clockRef.current = setInterval(() => {
       setClockMinute(elapsedMinutes(clockAnchor))
-    }, 30000)
+    }, 1000)
     return () => clearInterval(clockRef.current)
   }, [clockAnchor])
 
@@ -1049,7 +1058,8 @@ function LiveMatch() {
             <div className="live-note live-note-warn">{blockedNote}</div>
           ) : (
             <div className="live-note">
-              Lineups are set. The match starts at kickoff — come back then to log actions.
+              Lineups are set. The match starts at kickoff — this page switches to live logging by itself.
+              <KickoffCountdown kickoff={isFixture ? detail?.fixture?.event_date : detail?.event?.event_date} />
             </div>
           )}
           <Pitch homePlayers={withRatings(homeSide.starters)} awayPlayers={[]} />

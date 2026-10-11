@@ -98,7 +98,7 @@ export default function RsvpPanel({ eventId, getToken }) {
       const skipped = result?.skippedInjured || []
       setBulkResult(
         `Marked ${result?.updated ?? 0} ${result?.updated === 1 ? 'player' : 'players'} available.` +
-        (skipped.length ? ` Not marked (injured): ${skipped.map((p) => p.name).join(', ')}.` : '')
+        (skipped.length ? ` Set to unavailable (injured): ${skipped.map((p) => p.name).join(', ')}.` : '')
       )
       await load()
     } catch (err) {
