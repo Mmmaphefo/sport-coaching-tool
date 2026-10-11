@@ -4,7 +4,7 @@
 
 A full-stack web application for sports coaches and assistants to manage squads, schedule events, log live match data, and run multi-team leagues and tournaments.
 
-**Live app:** [kickstat.pages.dev](https://kickstat.pages.dev) · **Docs:** [kickstat-docs-v2.netlify.app](https://kickstat-docs-v2.netlify.app) · **API:** [kickstat-api-i2rc.onrender.com](https://kickstat-api-i2rc.onrender.com) · **API reference (Swagger):** [/api/docs](https://kickstat-api-i2rc.onrender.com/api/docs)
+**Live app:** [kickstat.pages.dev](https://kickstat.pages.dev) · **Docs:** [kickstat-docs-v2.netlify.app](https://kickstat-docs-v2.netlify.app) · **API (Swagger reference):** [kickstat-api-i2rc.onrender.com/api/docs](https://kickstat-api-i2rc.onrender.com/api/docs) · **API health check:** [/api/health](https://kickstat-api-i2rc.onrender.com/api/health)
 
 ## Features
 
@@ -18,7 +18,7 @@ A full-stack web application for sports coaches and assistants to manage squads,
 - Set date/time, location, duration, and opponent
 - Auto-transition: events automatically go live at the scheduled time and end when the duration expires
 
-### Live Match Logging (US13 / US14 / US15)
+### Live Match Logging 
 - Log live actions during a match: goals, assists, shots on target, saves, yellow/red cards, substitutions, penalties
 - Record actions for your squad (select an athlete) or the opposition (no athlete selected)
 - **Edit** or **Undo** log entries in real time
@@ -37,13 +37,13 @@ A full-stack web application for sports coaches and assistants to manage squads,
 - **Assistant**: can log live data and view the roster, but cannot add/edit/delete athletes
 - Assistants are invited by coaches via unique invite links
 
-### Availability & Scheduling Intelligence (Sprint 3)
+### Availability & Scheduling Intelligence 
 - Athletes RSVP to events; matches only start once enough players are available
 - Clash detection warns about scheduling conflicts before and after creation
 - Auto-transition sweep starts events at kickoff and ends them when the duration expires
 - Squad gender (male/female) with matchmaking filters for open leagues
 
-### Coaching Tools (Sprint 3)
+### Coaching Tools 
 - Athlete comparison page with BMI and form
 - Match-day rules: a match starts once at least 7 players are available, injured players never count, "Mark everyone available" in one step, and realistic card limits (max one red and two yellows per match; corrected totals stay within appearances)
 - Live updates without refreshing: kick-off countdown, a running match clock, live scores on the dashboard ("My live" and "Opponent live"), and availability that updates by itself
@@ -61,7 +61,7 @@ A full-stack web application for sports coaches and assistants to manage squads,
   fallback when no Mapbox token is set)
 - Offline logging queue with basic idempotent replay (client_id deduplication) for weak-signal pitch-side use
 
-### Public Pages (Sprint 3)
+### Public Pages 
 - Public squad pages and a public landing directory of squads with live events
 - Shareable private links with CSV roster export
 - Email reminders before events and invite emails, both sent via Brevo
