@@ -134,6 +134,7 @@ function createTeamState(side, squad) {
     onPitch: [...starters],
     benchAvailable: [...bench],
     sentOff: new Set(),
+    yellowCards: new Map(),
   };
 }
 
@@ -150,6 +151,7 @@ function createGenericOpponent(side, rating) {
     onPitch: [],
     benchAvailable: [],
     sentOff: new Set(),
+    yellowCards: new Map(),
   };
 }
 
@@ -229,12 +231,23 @@ function pickCardTarget(team) {
   return weightedPick(team.onPitch, (player) => playerWeight(player, CARD_SHARE));
 }
 
+// A sending-off removes the player from the match on the spot — off the
+// pitch and off the bench. The log endpoint's transaction does exactly this
+// when a red card lands (and when a second yellow becomes one), so the
+// script has to keep the same books or its later events get refused on
+// replay.
+function sendOff(team, athleteId) {
+  team.sentOff.add(athleteId);
+  team.onPitch = team.onPitch.filter((player) => player.athlete_id !== athleteId);
+  team.benchAvailable = team.benchAvailable.filter((player) => player.athlete_id !== athleteId);
+}
+
 // Applies a scheduled substitution to the running state and returns the pair
 // involved, or null when the team cannot substitute.
 function applyScheduledSub(team) {
   if (team.generic || team.benchAvailable.length === 0) return null;
-  // Keepers are only swapped in emergencies — a red card is already handled
-  // by taking that player off the pitch.
+  // Keepers are only swapped in emergencies — a sending-off (a red card or a
+  // second yellow) is already handled by taking that player off the pitch.
   const outfield = team.onPitch.filter(
     (player) => !team.sentOff.has(player.athlete_id) && positionGroup(player.position) !== 'GK'
   );
@@ -322,9 +335,15 @@ function simulateMatch({ home, away, opponentRating = 76 }) {
       // A sent-off player takes no further part in the match — neither on the
       // pitch nor later off the bench.
       if (entry.kind === 'red' && target) {
-        team.sentOff.add(target.athlete_id);
-        team.onPitch = team.onPitch.filter((player) => player.athlete_id !== target.athlete_id);
-        team.benchAvailable = team.benchAvailable.filter((player) => player.athlete_id !== target.athlete_id);
+        sendOff(team, target.athlete_id);
+      }
+      if (entry.kind === 'yellow' && target) {
+        const yellows = (team.yellowCards.get(target.athlete_id) || 0) + 1;
+        team.yellowCards.set(target.athlete_id, yellows);
+        // A second yellow is an automatic red card: ejected, benched and
+        // nobody comes on for him — the log endpoint books the very same red
+        // from that yellow, so the script must retire him here too.
+        if (yellows >= 2) sendOff(team, target.athlete_id);
       }
     } else if (entry.kind === 'sub') {
       const swap = applyScheduledSub(team);

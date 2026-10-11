@@ -378,6 +378,55 @@ describe('simulation engine', () => {
     expect(summary.awayGoals).toBe(goals.filter((e) => e.team_side === 'away').length)
   })
 
+  test('a sent-off player never appears in a later event — straight red or second yellow', () => {
+    const squad = (prefix, rating) => ({
+      starters: POSITIONS.map((position, i) => ({
+        athlete_id: `${prefix}-s${i + 1}`,
+        name: `${prefix} Starter ${i + 1}`,
+        position,
+        rating,
+      })),
+      bench: ['ST', 'CM', 'CB'].map((position, i) => ({
+        athlete_id: `${prefix}-b${i + 1}`,
+        name: `${prefix} Bench ${i + 1}`,
+        position,
+        rating,
+      })),
+    })
+
+    // The log endpoint books a second yellow as an automatic red card and
+    // benches the player, so a script that keeps giving him anything to do
+    // afterwards is refused mid-replay. Nothing is seeded, so run a batch of
+    // matches and hold every script to the invariant: once a player is off,
+    // he is off — no goals, assists, shots, saves, bookings or substitutions
+    // in either direction.
+    for (let run = 0; run < 200; run += 1) {
+      const { events } = simulation.simulateMatch({ home: squad('h', 80), away: squad('a', 76) })
+      const sentOff = new Set()
+      const yellows = new Map()
+
+      events.forEach((event, index) => {
+        const involved = [event.athlete_id, event.assist_athlete_id, event.substitute_athlete_id]
+          .filter((id) => id)
+        for (const id of involved) {
+          expect(
+            sentOff.has(id),
+            `run ${run}: ${id} takes part at ${event.minute}' ${event.action_type} (event ${index}) after being sent off`
+          ).toBe(false)
+        }
+
+        if (event.action_type === 'red_card' && event.athlete_id) {
+          sentOff.add(event.athlete_id)
+        }
+        if (event.action_type === 'yellow_card' && event.athlete_id) {
+          const count = (yellows.get(event.athlete_id) || 0) + 1
+          yellows.set(event.athlete_id, count)
+          if (count >= 2) sentOff.add(event.athlete_id)
+        }
+      })
+    }
+  })
+
   test('nothing is seeded — two runs of the same squads differ', () => {
     const squad = (prefix, rating) => ({
       starters: POSITIONS.map((position, i) => ({
