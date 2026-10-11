@@ -143,58 +143,53 @@ describe('availability gate — starting a match', () => {
       .set('x-test-clerk-user-id', COACH)
 
     expect(res.status).toBe(200)
-    expect(res.body.availability).toEqual({ required: 12, available: 4, meets: false })
+    expect(res.body.availability).toEqual({ required: 7, available: 4, meets: false })
   })
 
   test('Start live is refused while short and succeeds once enough players reply', async () => {
     const athletes = await seedRoster(squadId, 12)
     const event = await createMatch()
-    await seedAvailability(event.id, athletes.slice(0, 10))
+    await seedAvailability(event.id, athletes.slice(0, 6))
 
     const refused = await startEvent(event.id)
 
     expect(refused.status).toBe(400)
-    expect(refused.body.error).toMatch(/only 10 of 12 required players/i)
-    expect(refused.body.availability).toEqual({ required: 12, available: 10, meets: false })
+    expect(refused.body.error).toMatch(/only 6 of the 7 players needed/i)
+    expect(refused.body.availability).toEqual({ required: 7, available: 6, meets: false })
 
     const afterRefusal = await pool.query('SELECT status FROM events WHERE id = $1', [event.id])
     expect(afterRefusal.rows[0].status).toBe('scheduled')
 
-    await seedAvailability(event.id, athletes.slice(10))
+    await seedAvailability(event.id, athletes.slice(6, 7))
 
     const started = await startEvent(event.id)
     expect(started.status).toBe(200)
     expect(started.body.status).toBe('live')
   })
 
-  test('a squad smaller than the configured minimum only needs everyone it has', async () => {
+  test('a squad with fewer than 7 players cannot start a match, even with everyone available', async () => {
     const athletes = await seedRoster(squadId, 3)
     const event = await createMatch()
-    await seedAvailability(event.id, athletes.slice(0, 2))
+    await seedAvailability(event.id, athletes)
 
     const refused = await startEvent(event.id)
     expect(refused.status).toBe(400)
-    expect(refused.body.availability).toEqual({ required: 3, available: 2, meets: false })
-
-    await seedAvailability(event.id, athletes.slice(2))
-
-    const started = await startEvent(event.id)
-    expect(started.status).toBe(200)
+    expect(refused.body.availability).toEqual({ required: 7, available: 3, meets: false })
   })
 
   test('unavailable replies do not count towards the bar', async () => {
     const athletes = await seedRoster(squadId, 12)
     const event = await createMatch()
     await seedAvailability(event.id, athletes)
-    await seedAvailability(event.id, [athletes[11]], 'unavailable')
+    await seedAvailability(event.id, athletes.slice(6), 'unavailable')
 
-    // Eleven of twelve is short of a full match-day squad: the twelfth
-    // cannot simply withdraw and leave the bench empty.
+    // Six available and six unavailable: the unavailable replies do not
+    // count, so the squad is one short of the seven it needs.
     const res = await startEvent(event.id)
     expect(res.status).toBe(400)
-    expect(res.body.availability).toEqual({ required: 12, available: 11, meets: false })
+    expect(res.body.availability).toEqual({ required: 7, available: 6, meets: false })
 
-    await seedAvailability(event.id, [athletes[11]])
+    await seedAvailability(event.id, [athletes[6]])
 
     const started = await startEvent(event.id)
     expect(started.status).toBe(200)
@@ -212,19 +207,19 @@ describe('availability gate — starting a match', () => {
   test('saving the XI on a due match keeps it scheduled while the squad is short', async () => {
     const athletes = await seedRoster(squadId, 12)
     const event = await createMatch({ event_date: oneHourAgo })
-    await seedAvailability(event.id, athletes.slice(0, 10))
+    await seedAvailability(event.id, athletes.slice(0, 6))
 
     const blocked = await saveEventLineup(event.id, athletes)
 
     expect(blocked.status).toBe(200)
     expect(blocked.body.lineups).toHaveLength(12)
-    expect(blocked.body.startBlocked).toEqual({ required: 12, available: 10, meets: false })
+    expect(blocked.body.startBlocked).toEqual({ required: 7, available: 6, meets: false })
 
     const afterBlocked = await pool.query('SELECT status FROM events WHERE id = $1', [event.id])
     expect(afterBlocked.rows[0].status).toBe('scheduled')
 
     // More replies arrive: saving the XI again now kicks off as it always did.
-    await seedAvailability(event.id, athletes.slice(10))
+    await seedAvailability(event.id, athletes.slice(6))
     const started = await saveEventLineup(event.id, athletes)
 
     expect(started.status).toBe(200)
@@ -243,7 +238,7 @@ describe('availability gate — league fixtures', () => {
     const refused = await startFixture(fixture.id)
 
     expect(refused.status).toBe(400)
-    expect(refused.body.error).toMatch(/only 0 of 12 required players/i)
+    expect(refused.body.error).toMatch(/only 0 of the 7 players needed/i)
 
     const afterRefusal = await pool.query('SELECT status FROM fixtures WHERE id = $1', [fixture.id])
     expect(afterRefusal.rows[0].status).toBe('scheduled')

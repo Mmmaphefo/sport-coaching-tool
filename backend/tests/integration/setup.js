@@ -68,4 +68,23 @@ async function seedAvailability(eventId, athletes, status = 'available') {
   }
 }
 
-module.exports = { pool, resetDatabase, seedCoach, seedAvailability }
+// Matches need at least 7 available players to start (lib/availability).
+// Tests that start a match with a small lineup call this to top the squad
+// up: extra "Reserve" players are added and marked available until at
+// least `count` of the squad's players are available for the event.
+async function ensureAvailablePlayers(eventId, squadId, count = 7) {
+  const current = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM event_rsvps r JOIN athletes a ON a.id = r.athlete_id
+      WHERE r.event_id = $1 AND a.squad_id = $2 AND r.status = 'available'`,
+    [eventId, squadId]
+  )
+  for (let i = current.rows[0].n; i < count; i++) {
+    const reserve = await pool.query(
+      'INSERT INTO athletes (squad_id, name) VALUES ($1, $2) RETURNING id',
+      [squadId, `Reserve ${eventId}-${i + 1}`]
+    )
+    await seedAvailability(eventId, [reserve.rows[0]])
+  }
+}
+
+module.exports = { pool, resetDatabase, seedCoach, seedAvailability, ensureAvailablePlayers }

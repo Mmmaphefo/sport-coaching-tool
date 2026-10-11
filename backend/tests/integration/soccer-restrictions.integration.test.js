@@ -6,8 +6,7 @@
 //   - an injury cannot predate the player's birth or their 15th birthday,
 //   - a second yellow becomes an automatic red: the player is ejected,
 //     benched with no replacement, and refused any further involvement,
-//   - a match needs a full match-day squad available (11 starters + 5 bench,
-//     capped at the roster size for squads still recruiting),
+//   - a match needs at least 7 available players,
 //   - dashboard and public payloads carry the upcoming schedule (at most 6)
 //     and the live matches of other teams, plus a public squad CSV export.
 import { describe, test, expect, beforeAll, beforeEach, afterAll } from 'vitest'
@@ -392,8 +391,8 @@ describe('second yellow card = automatic red, ejection, no replacement', () => {
   })
 })
 
-describe('match-day squad gate (11 starters + 5 bench)', () => {
-  test('a full 16-player squad needs all 16 available; 15 of 16 is not enough', async () => {
+describe('match-day availability gate (at least 7 available players)', () => {
+  test('a match needs 7 available players; 6 is not enough', async () => {
     const athletes = []
     for (let i = 0; i < 16; i++) {
       athletes.push(await insertAthlete(squadId, `Player ${i}`))
@@ -409,18 +408,18 @@ describe('match-day squad gate (11 starters + 5 bench)', () => {
     })
     expect(created.status).toBe(201)
 
-    await seedAvailability(created.body.id, athletes.slice(0, 15))
+    await seedAvailability(created.body.id, athletes.slice(0, 6))
 
     const short = await as().get(`/api/events/${created.body.id}`)
-    expect(short.body.availability).toMatchObject({ required: 16, available: 15, meets: false })
+    expect(short.body.availability).toMatchObject({ required: 7, available: 6, meets: false })
 
-    await seedAvailability(created.body.id, athletes)
+    await seedAvailability(created.body.id, athletes.slice(0, 7))
 
-    const full = await as().get(`/api/events/${created.body.id}`)
-    expect(full.body.availability).toMatchObject({ required: 16, available: 16, meets: true })
+    const enough = await as().get(`/api/events/${created.body.id}`)
+    expect(enough.body.availability).toMatchObject({ required: 7, available: 7, meets: true })
   })
 
-  test('a squad still recruiting is held to its size, not to 16', async () => {
+  test('a squad with fewer than 7 players cannot start a match, however many answer', async () => {
     const small = (await seedCoach('small_coach')).squadId
     const a = await insertAthlete(small, 'One')
     const b = await insertAthlete(small, 'Two')
@@ -432,7 +431,7 @@ describe('match-day squad gate (11 starters + 5 bench)', () => {
       .get(`/api/events/${event}`)
       .set('x-test-clerk-user-id', 'small_coach')
 
-    expect(res.body.availability).toMatchObject({ required: 2, available: 2, meets: true })
+    expect(res.body.availability).toMatchObject({ required: 7, available: 2, meets: false })
   })
 })
 

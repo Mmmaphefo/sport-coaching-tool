@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import request from 'supertest'
 import express from 'express'
-import { pool, resetDatabase, seedCoach, seedAvailability } from './setup'
+import { pool, resetDatabase, seedCoach, seedAvailability, ensureAvailablePlayers } from './setup'
 
 import eventsRouter from '../../src/routes/events'
 import fixturesRouter from '../../src/routes/fixtures'
@@ -137,6 +137,7 @@ describe('Start-time guard — an event can only happen once its scheduled time 
     // Availability gate: the squad's one player is marked available, so the
     // bar (min(roster minimum, roster size)) is met and the XI save starts it.
     await seedAvailability(event.id, [athlete])
+    await ensureAvailablePlayers(event.id, squadId)
 
     // Live logging is lineup-gated, so the first live action is the coach
     // naming a starting XI — once kickoff has passed that itself starts the
@@ -165,6 +166,8 @@ describe('Start-time guard — an event can only happen once its scheduled time 
 
   test('AC: manually starting an event sets started_at and re-starting does not reset it', async () => {
     const event = await createEvent({ event_date: oneHourFromNow })
+    // A match needs at least 7 available players to start.
+    await ensureAvailablePlayers(event.id, squadId)
 
     const first = await request(app)
       .patch(`/api/events/${event.id}`)
@@ -206,6 +209,7 @@ describe('Start-time guard — fixtures follow the same rules', () => {
     // The fixture gate reads the home squad's availability on the league
     // event; mark the home player available so the bar is met.
     await seedAvailability(fixture.event_id, [homePlayer])
+    await ensureAvailablePlayers(fixture.event_id, squadId)
 
     // The lineup gate makes naming the XIs the first live action; after
     // kickoff that itself starts the fixture and anchors started_at.

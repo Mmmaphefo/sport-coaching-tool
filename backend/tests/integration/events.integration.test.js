@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import request from 'supertest'
 import express from 'express'
-import { pool, resetDatabase, seedCoach, seedAvailability } from './setup'
+import { pool, resetDatabase, seedCoach, seedAvailability, ensureAvailablePlayers } from './setup'
 
 
 import eventsRouter from '../../src/routes/events'
@@ -100,6 +100,7 @@ async function setEventLineup(eventId, { starterIds } = {}) {
   // The availability gate reads RSVPs before a match may go live; mark the
   // squad available so the XI save starts the event as it always did.
   await seedAvailability(eventId, athletes.rows)
+  await ensureAvailablePlayers(eventId, squadId)
   const lineups = athletes.rows.map((a, i) => {
     const isStarter = starterIds ? starterIds.includes(a.id) : i < 11
     return {
@@ -122,6 +123,7 @@ async function setFixtureLineup(fixtureId, { homeStarterIds } = {}) {
   // The fixture gate reads the home squad's RSVPs on the league event; a
   // fully available home side keeps "save the XIs, go live" working.
   await seedAvailability(detail.body.fixture.event_id, detail.body.rosters.home)
+  await ensureAvailablePlayers(detail.body.fixture.event_id, detail.body.fixture.home_squad_id)
 
   const build = (roster, side, starterIds) => roster.map((a, i) => {
     const isStarter = starterIds ? starterIds.includes(a.id) : i < 11
