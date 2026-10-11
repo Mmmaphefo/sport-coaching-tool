@@ -17,6 +17,7 @@ const { findClashes } = require('../lib/clashes');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
 const { parseLogMeta } = require('../lib/logMeta');
 const { applyLogEdit } = require('../lib/logEdit');
+const { matchCardLimitError } = require('../lib/cardRules');
 
 const router = express.Router();
 
@@ -540,6 +541,15 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
     const entryNotes = actionType === 'substitution' && substitute_athlete_id
       ? `on:${Number(substitute_athlete_id)}`
       : (notes || null);
+
+    // Card rules (lib/cardRules): at most two yellows and one red per player
+    // per match, which keeps season totals within appearances.
+    const cardError = await matchCardLimitError(pool, {
+      eventId: fixture.event_id, fixtureId: fixture.id, athleteId: athlete_id ? Number(athlete_id) : null, actionType,
+    });
+    if (cardError) {
+      return res.status(400).json({ error: cardError });
+    }
 
     const client = await pool.connect();
     let createdEntry;

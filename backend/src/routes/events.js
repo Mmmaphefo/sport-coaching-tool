@@ -18,6 +18,7 @@ const { assertMatchDayRules } = require('../lib/soccerRules');
 const { getMatchAvailability, availabilityError } = require('../lib/availability');
 const { parseLogMeta } = require('../lib/logMeta');
 const { applyLogEdit } = require('../lib/logEdit');
+const { matchCardLimitError } = require('../lib/cardRules');
 
 const router = express.Router();
 
@@ -1280,6 +1281,15 @@ router.post('/:id/logs', requireAuth(), async (req, res) => {
       ? `on:${Number(substitute_athlete_id)}`
       : (notes || null);
 
+    // Card rules (lib/cardRules): at most two yellows and one red per player
+    // per match, which keeps season totals within appearances.
+    const cardError = await matchCardLimitError(pool, {
+      eventId: event.id, athleteId: athlete_id ? Number(athlete_id) : null, actionType,
+    });
+    if (cardError) {
+      return res.status(400).json({ error: cardError });
+    }
+
     const client = await pool.connect();
     let createdEntry;
     let substitutionError = null;
@@ -1550,6 +1560,58 @@ router.put('/:id/rsvps/mine', requireAuth(), async (req, res) => {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('Error setting RSVP:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/events/:id/rsvps — a coach or assistant marks the whole squad
+// available in one go (body: { status: 'available' }), instead of one player
+// at a time. Players injured on the event's date (not cleared, and not yet
+// past their expected return) are left as they are, and named in the reply.
+router.put('/:id/rsvps', requireAuth(), async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+    const userId = await getOrCreateUserId(pool, clerkUserId);
+    const squadId = await getOwnedSquadIdForStaff(pool, clerkUserId);
+
+    const event = await loadEventWithAccess(pool, req.params.id, squadId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (req.body?.status !== 'available') {
+      return res.status(400).json({ error: "Only status 'available' can be set for the whole squad" });
+    }
+
+    // Injured on the event's date: not cleared, already sustained, and not
+    // yet past the expected return. `dateParam` is the query's $n for the date.
+    const injuredOnTheDay = (dateParam) => `EXISTS (
+      SELECT 1 FROM injuries i
+       WHERE i.athlete_id = a.id AND i.cleared_at IS NULL
+         AND i.date_sustained <= ${dateParam}::date
+         AND (i.return_date IS NULL OR i.return_date > ${dateParam}::date))`;
+
+    const updated = await pool.query(
+      `INSERT INTO event_rsvps (event_id, athlete_id, status, note, responded_by, responded_at)
+       SELECT $1, a.id, 'available', NULL, $2, now()
+         FROM athletes a
+        WHERE a.squad_id = $3 AND NOT ${injuredOnTheDay('$4')}
+       ON CONFLICT (event_id, athlete_id)
+       DO UPDATE SET status = 'available', note = NULL, responded_by = $2, responded_at = now(), updated_at = now()
+       RETURNING athlete_id`,
+      [req.params.id, userId, squadId, event.event_date]
+    );
+    const injured = await pool.query(
+      `SELECT a.id, a.name FROM athletes a WHERE a.squad_id = $1 AND ${injuredOnTheDay('$2')}
+        ORDER BY a.name`,
+      [squadId, event.event_date]
+    );
+
+    res.json({ updated: updated.rowCount, skippedInjured: injured.rows });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Error marking squad available:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

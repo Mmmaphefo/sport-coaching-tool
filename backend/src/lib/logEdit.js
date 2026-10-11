@@ -13,6 +13,8 @@
 // Callers resolve the event/fixture, the role guard and the (not deleted)
 // row first, then map this outcome to a response.
 
+const { matchCardLimitError } = require('./cardRules');
+
 function normalise(body) {
   const has = (field) => Object.prototype.hasOwnProperty.call(body, field);
   const fields = {};
@@ -88,6 +90,18 @@ async function applyLogEdit(pool, { row, body, squadId }) {
     if (athlete.rows.length === 0) {
       return { status: 400, error: 'Athlete does not belong to this squad' };
     }
+  }
+
+  // Card rules (lib/cardRules): an edit that turns an entry into a card, or
+  // moves a card to another player, must respect the per-match limit.
+  const nextAthlete = 'athlete_id' in fields ? fields.athlete_id : row.athlete_id;
+  const nextAction = 'action_type' in fields ? fields.action_type : row.action_type;
+  if (nextAthlete !== row.athlete_id || nextAction !== row.action_type) {
+    const cardError = await matchCardLimitError(pool, {
+      eventId: row.event_id, fixtureId: row.fixture_id, athleteId: nextAthlete,
+      actionType: nextAction, excludeLogId: row.id,
+    });
+    if (cardError) return { status: 400, error: cardError };
   }
 
   // Last-writer-wins: the stored edited_at is the newest accepted write.

@@ -116,3 +116,29 @@
 .rsvp-btn-active.rsvp-btn-available { background: rgba(72, 187, 120, 0.2); border-color: #48bb78; }
 .rsvp-btn-active.rsvp-btn-maybe { background: rgba(214, 158, 46, 0.2); border-color: #d69e2e; }
 .rsvp-btn-active.rsvp-btn-unavailable { background: rgba(245, 101, 101, 0.2); border-color: #f56565; }
+
+/* Mark-everyone button, and messages shown right where an action happened. */
+.rsvp-bulk {
+  margin: 0.75rem 0;
+}
+
+.rsvp-bulk-result {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-ink-soft);
+}
+
+.rsvp-inline-error {
+  flex-basis: 100%;
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: #c0392b;
+}
+
+[data-theme="dark"] .rsvp-inline-error {
+  color: #f08a80;
+}
+
+.rsvp-row {
+  flex-wrap: wrap;
+}

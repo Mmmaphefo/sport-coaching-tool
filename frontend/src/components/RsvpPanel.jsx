@@ -11,8 +11,14 @@ const STATUS_LABEL = {
 
 const STATUS_OPTIONS = ['available', 'maybe', 'unavailable']
 
+// How often the panel re-reads availability, so responses from other people
+// appear without a page refresh.
+export const RSVP_REFRESH_MS = 15000
+
 // Lets a coach/assistant see (and set, on an athlete's behalf) who's
 // available for an event, and lets an athlete set their own availability.
+// A failed save is shown right where it happened (under that row, or under
+// the "mark everyone" button), not by replacing the whole panel.
 export default function RsvpPanel({ eventId, getToken }) {
   const [role, setRole] = useState(null)
   const [myAthleteId, setMyAthleteId] = useState(null)
@@ -21,6 +27,9 @@ export default function RsvpPanel({ eventId, getToken }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [savingId, setSavingId] = useState(null)
+  // { at: athleteId | 'all', text } for the last failed save, shown in place.
+  const [actionError, setActionError] = useState(null)
+  const [bulkResult, setBulkResult] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -48,8 +57,23 @@ export default function RsvpPanel({ eventId, getToken }) {
     load()
   }, [load])
 
+  // Keep availability current while the panel is open. Paused while the tab
+  // is hidden, and refreshed as soon as it is shown again.
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') load()
+    }
+    const timer = setInterval(tick, RSVP_REFRESH_MS)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [load])
+
   async function setStatus(athleteId, status, isMine) {
     setSavingId(athleteId)
+    setActionError(null)
     try {
       const path = isMine
         ? `/api/events/${eventId}/rsvps/mine`
@@ -57,11 +81,37 @@ export default function RsvpPanel({ eventId, getToken }) {
       await apiRequest(path, { method: 'PUT', body: { status }, getToken })
       await load()
     } catch (err) {
-      setError(err.message)
+      setActionError({ at: athleteId, text: err.message })
     } finally {
       setSavingId(null)
     }
   }
+
+  async function markEveryoneAvailable() {
+    setSavingId('all')
+    setActionError(null)
+    setBulkResult('')
+    try {
+      const result = await apiRequest(`/api/events/${eventId}/rsvps`, {
+        method: 'PUT', body: { status: 'available' }, getToken,
+      })
+      const skipped = result?.skippedInjured || []
+      setBulkResult(
+        `Marked ${result?.updated ?? 0} ${result?.updated === 1 ? 'player' : 'players'} available.` +
+        (skipped.length ? ` Not marked (injured): ${skipped.map((p) => p.name).join(', ')}.` : '')
+      )
+      await load()
+    } catch (err) {
+      setActionError({ at: 'all', text: err.message })
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const errorAt = (at) =>
+    actionError && actionError.at === at ? (
+      <p className="rsvp-inline-error" role="alert">{actionError.text}</p>
+    ) : null
 
   if (loading) return null
   if (error) return <div className="rsvp-panel rsvp-panel-error">Couldn't load availability: {error}</div>
@@ -102,6 +152,22 @@ export default function RsvpPanel({ eventId, getToken }) {
               </button>
             ))}
           </div>
+          {errorAt(myAthleteId)}
+        </div>
+      )}
+
+      {isCoachOrAssistant && rsvps.length > 0 && (
+        <div className="rsvp-bulk">
+          <button
+            type="button"
+            className="btn btn-ghost rsvp-bulk-btn"
+            disabled={savingId !== null}
+            onClick={markEveryoneAvailable}
+          >
+            {savingId === 'all' ? 'Marking everyone…' : 'Mark everyone available'}
+          </button>
+          {bulkResult && <p className="rsvp-bulk-result" role="status">{bulkResult}</p>}
+          {errorAt('all')}
         </div>
       )}
 
@@ -124,6 +190,7 @@ export default function RsvpPanel({ eventId, getToken }) {
                   </button>
                 ))}
               </div>
+              {errorAt(r.athlete_id)}
             </li>
           ))}
         </ul>

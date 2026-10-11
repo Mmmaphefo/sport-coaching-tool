@@ -1,3 +1,4 @@
+const { cardTotalsError } = require('../lib/cardRules');
 const express = require('express');
 const pool = require('../db');
 const { requireAuth, getAuth } = require('../middleware/auth');
@@ -357,6 +358,8 @@ router.get('/:id/stats', requireAuth(), async (req, res) => {
 
 // Stat keys a coach is allowed to manually correct — matches the keys
 // returned in GET /:id/stats above.
+const CARD_RULE_KEYS = new Set(['appearances', 'yellowCards', 'redCards']);
+
 const OVERRIDABLE_STAT_KEYS = new Set([
   'goals', 'assists', 'penalties', 'yellowCards', 'redCards', 'appearances',
 ]);
@@ -386,6 +389,28 @@ router.patch('/:id/stats/override', requireAuth(), async (req, res) => {
     const overrideValue = Number(value);
     if (!Number.isInteger(overrideValue) || overrideValue < 0) {
       return res.status(400).json({ error: 'value must be a non-negative whole number' });
+    }
+
+    // Card rules (lib/cardRules): a correction must keep red cards within
+    // appearances and yellow cards within twice the appearances. The check
+    // uses the stats as they would read after this correction: computed from
+    // the log, with every existing correction applied, plus this one.
+    if (CARD_RULE_KEYS.has(stat_key)) {
+      const logs = await pool.query(
+        'SELECT action_type, value, event_id FROM log_entries WHERE athlete_id = $1 AND deleted_at IS NULL',
+        [req.params.id]
+      );
+      const effective = summariseLogs(logs.rows);
+      const overrides = await pool.query(
+        'SELECT stat_key, override_value FROM athlete_stat_overrides WHERE athlete_id = $1',
+        [req.params.id]
+      );
+      for (const o of overrides.rows) effective[o.stat_key] = o.override_value;
+      effective[stat_key] = overrideValue;
+      const cardError = cardTotalsError(effective);
+      if (cardError) {
+        return res.status(400).json({ error: cardError });
+      }
     }
 
     const result = await pool.query(
